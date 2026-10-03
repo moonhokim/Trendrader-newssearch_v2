@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="뉴스, YouTube, GitHub, 블로그, Reddit의 최신 검색 결과를 한 곳에서 확인하는 통합 검색 사이트입니다.">
+    <meta name="keywords" content="뉴스 검색, YouTube 검색, 글로벌 트렌드, 네이버 블로그, 티스토리, Reddit, GitHub">
+    <title>Global Trend Search - 실시간 통합 검색</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons (CDN) -->
+
+    <link rel="stylesheet" href="reset.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="glass">
+        <div class="brand">
+            <div class="brand-logo">T</div>
+            <div class="brand-text">GLOBAL TREND SEARCH</div>
+        </div>
+
+        <div class="trending-ticker" title="Google Trends 실시간 검색순위">
+            <div class="ticker-heading">
+                <span class="ticker-label" id="tickerLabel">실시간 인기검색어</span>
+            <small class="ticker-note" id="tickerNote">Google Trends 순위 불러오는 중</small>
+            </div>
+            <div class="ticker-wrapper">
+                <div class="ticker-list" id="tickerList"><span class="ticker-item">검색 기록 대기 중</span></div>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <span class="badge-architect">LIVE SOURCES</span>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-container">
+
+        <section class="trend-home glass" aria-labelledby="trendHomeTitle">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">DISCOVER</p>
+                    <h1 id="trendHomeTitle">지금 움직이는 이야기</h1>
+                    <p class="section-description">검색어 없이도 지역별 급상승 흐름을 먼저 살펴보세요.</p>
+                </div>
+                <span class="data-as-of" id="trendUpdatedAt">데이터 기준 시각 확인 중</span>
+            </div>
+            <div id="trendCards" class="trend-cards" aria-live="polite"></div>
+        </section>
+
+        <!-- Search Bar & Filters Section -->
+        <section class="search-section glass">
+            <div class="search-bar-wrapper">
+                <div class="search-input-container">
+                    <i data-lucide="search"></i>
+                    <input type="text" id="searchInput" aria-label="검색어" maxlength="180" class="search-input" placeholder="키워드나 트렌드를 검색하세요... (예: Gemini, 금리, 에이전트, 스위스 등)">
+                </div>
+                <button class="btn-search" id="searchBtn">
+                    <i data-lucide="search"></i> 실시간 검색
+                </button>
+            </div>
+
+            <div class="live-controls"><label><input type="checkbox" id="autoRefresh"> 1분마다 자동 갱신</label><p id="searchStatus" role="status" aria-live="polite">수집 대기 중</p></div>
+            <p class="source-note" id="rankingNote" aria-live="polite">기본 인기순은 검색어 일치도를 유지하며 조회·추천·스타를 우선합니다. 뉴스는 유사 보도 매체 수로 관심도를 추정하며 지표가 없으면 출처 검색 순서를 보조 사용합니다.</p>
+            <p class="source-note">Google 뉴스·YouTube·GitHub·Reddit, 네이버·다음·티스토리·DEV·요즘IT·Medium·WordPress, 뽐뿌·오늘의유머·디시인사이드·9GAG·Bored Panda를 검색합니다. 출처별 제공 범위·호출 제한에 따라 일부 수집이 실패할 수 있습니다. 동일 조건은 최대 60초 캐시됩니다.</p>
+            <details class="collection-details" open><summary>채널별 수집 상태</summary><div id="sourceStatuses" class="source-statuses"></div><p class="source-note">조회는 출처에서 가져온 수, 표시는 검색 조건·중복 제거·최대 100건 제한 적용 후 결과 수입니다. 날짜가 없는 항목은 기간 필터에서 제외될 수 있습니다.</p></details>
+            <!-- Category Chips -->
+            <div class="category-scroll-container" id="categoryContainer"></div>
+
+            <!-- Advanced Filters Grid -->
+            <div class="filter-panel">
+                <div class="filter-group">
+                    <label class="filter-label" for="filterField"><i data-lucide="grid"></i> 검색분야 (키워드 추가)</label>
+                    <select class="filter-select" id="filterField"></select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label" for="filterCountry"><i data-lucide="globe"></i> 국가·우선 언어 (전체 채널)</label>
+                    <select class="filter-select" id="filterCountry" aria-describedby="rankingHelp"></select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label" for="filterPeriod"><i data-lucide="calendar"></i> 검색기간</label>
+                    <select class="filter-select" id="filterPeriod"></select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label" for="filterSort"><i data-lucide="sliders-horizontal"></i> 정렬 기준</label>
+                    <select class="filter-select" id="filterSort"></select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Content Layout -->
+        <div class="content-area">
+            <section class="feed-container">
+                <div class="feed-header">
+                    <h2 class="feed-title">실시간 통합 검색 피드</h2>
+                    <div class="results-count" id="resultsCount">검색 결과: <span>0</span>건</div>
+                </div>
+
+                <div class="result-summary" id="resultSummary" aria-live="polite">
+                    <span>검색 전 탐색 가능한 최근 트렌드</span>
+                </div>
+                <div class="source-group-tabs" id="sourceGroupTabs" role="tablist" aria-label="결과 소스 그룹">
+                    <button class="source-group-tab active" data-group="all" role="tab" aria-selected="true">전체 <span>0</span></button>
+                    <button class="source-group-tab" data-group="news" role="tab" aria-selected="false">뉴스 <span>0</span></button>
+                    <button class="source-group-tab" data-group="video" role="tab" aria-selected="false">영상 <span>0</span></button>
+                    <button class="source-group-tab" data-group="community" role="tab" aria-selected="false">커뮤니티 <span>0</span></button>
+                    <button class="source-group-tab" data-group="code" role="tab" aria-selected="false">코드 <span>0</span></button>
+                </div>
+
+                <div class="result-actions"><button id="exportBtn" class="btn-view-original" disabled>현재 결과 CSV 저장</button><button id="shareBtn" class="btn-view-original">검색 주소 복사</button><span id="actionStatus" role="status"></span></div>
+                <p class="source-note" id="rankingHelp">인기순은 선택 기간 내 검색어 일치도를 유지한 뒤 각 출처의 조회·추천·스타 순위를 비교합니다. 뉴스는 최근 72시간 이내 유사한 제목을 보도한 매체 수로 관심도를 추정합니다. 조회수 순위는 아니며, 지표가 없는 뉴스·블로그는 출처 검색 순서를 보조 사용합니다. 관련도순과 최신정보순도 선택할 수 있습니다. 국가 선택은 우선 언어를 뜻하며, 실시간은 주기적 수집을 뜻합니다.</p>
+                <div id="feedList" class="feed-list"></div>
+            </section>
+
+            <aside class="split-view-container glass" id="splitView">
+                <div class="split-view-header">
+                    <div class="split-view-title"
+                    >
+                        <i data-lucide="search-code" class="detail-icon"></i>
+                        출처 설명 및 원문
+                    </div>
+                    <button class="btn-close-split" id="closeSplitBtn" aria-label="상세 보기 닫기">
+                        닫기 ×
+                    </button>
+                </div>
+                <div class="split-view-content" id="splitViewContent"></div>
+            </aside>
+        </div>
+
+    </main>
+
+    <nav class="bottom-nav" aria-label="주요 메뉴">
+        <a href="#trendHomeTitle" class="bottom-nav-item active"><i data-lucide="house"></i><span>홈</span></a>
+        <a href="#categoryContainer" class="bottom-nav-item"><i data-lucide="compass"></i><span>탐색</span></a>
+        <a href="#searchInput" class="bottom-nav-item"><i data-lucide="search"></i><span>검색</span></a>
+        <a href="#savedTopics" class="bottom-nav-item"><i data-lucide="bookmark"></i><span>저장</span></a>
+        <a href="#searchStatus" class="bottom-nav-item"><i data-lucide="activity"></i><span>상태</span></a>
+    </nav>
+
+    <footer class="site-footer">
+        <p>© 2026 Global Trend Search</p>
+        <p class="footer-note">출처가 제공한 설명과 공개 데이터 · 원문 전체는 원문 보기에서 확인 · 수집 범위와 오류는 검색 상태에 표시</p>
+    </footer>
+
+    <script src="app.js" defer></script>
+</body>
+</html>
