@@ -16,19 +16,19 @@
       "dest": "/api/[[...route]].js"
     },
     {
-      "src": "/(app\\.js|style\\.css|reset\\.css|bg\\.jpg)",
+      "src": "/brand/(trend-radar-(?:logo|banner)-en\\.png)",
+      "dest": "/public/brand/$1"
+    },
+    {
+      "src": "/(app\\.js|style\\.css|reset\\.css)",
       "dest": "/public/$1"
     },
     {
-      "src": "/",
+      "src": "/(?:index\\.html)?",
       "dest": "/public/index.html"
     },
     {
       "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
     }
   ]
 }

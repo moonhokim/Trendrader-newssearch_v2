@@ -63,8 +63,22 @@ function signal(item) {
     if (item.source === 'YouTube') return metricNumber(item.metrics?.[0]);
     return null;
 }
+function channelPriority(item) {
+    const provider = String(item.provider || item.source || '').toLowerCase();
+    if (provider.startsWith('news')) return 0;
+    if (provider === 'youtube') return 1;
+    if (provider === 'reddit' || provider.startsWith('humor') || provider.startsWith('community')) return 2;
+    if (provider.startsWith('blog')) return 3;
+    if (provider === 'github') return 4;
+    return 5;
+}
 export function rankItems(items, o) {
     const language = o.language || regions[o.country]?.language || 'ko';
+    // Mixed feeds have no shared popularity scale when any channel lacks metrics.
+    // Apply one global policy, rather than switching rules for individual pairs.
+    const channelFirst = o.sort === 'popular'
+        && new Set(items.map(channelPriority)).size > 1
+        && items.some(item => signal(item) === null);
     const queryTerms = new Set(tokens(o.query));
     const headlines = items.filter(i => i.provider === 'news').map(item => ({ item,
         terms: new Set(tokens(item.title.replace(/\s+-\s+[^-]+$/, '')).filter(t => t.length > 1 && !queryTerms.has(t))) }));
@@ -85,15 +99,16 @@ export function rankItems(items, o) {
         const value = signal(item), key = item.provider || item.source;
         if (value !== null) populations.set(key, [...(populations.get(key) || []), value]);
     }
+    const seenTitles = new Set();
     return items.map(item => {
         const value = signal(item), peers = populations.get(item.provider || item.source) || [];
         // Midrank percentiles avoid comparing raw video views to repository stars.
         const newsCoverage = coverage.get(item) || 0;
         const popularityScore = value !== null ? (peers.filter(n => n < value).length + peers.filter(n => n === value).length / 2) / peers.length
             : newsCoverage > 1 ? 0.5 + 0.5 * (1 - 1 / newsCoverage)
-            : 0.5 / (1 + Math.max(0, (item.sourceRank || 1) - 1) / 10);
+            : null;
         return { ...item, ...languagePreference(item, language), relevance: relevance(item, o.query), popularityScore,
-            popularityBasis: value !== null ? '출처 내 조회·반응 순위' : newsCoverage > 1 ? `유사 보도 ${newsCoverage}개 매체 · 관심도 추정 (조회수 아님)` : '조회·반응 미제공 · 출처 검색 순서 보조' };
+            popularityBasis: value !== null ? '출처 내 조회·반응 순위' : newsCoverage > 1 ? `유사 보도 ${newsCoverage}개 매체 · 관심도 추정 (조회수 아님)` : null };
     }).sort((a, b) => {
         const newest = (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0);
         const related = b.relevance.coverage - a.relevance.coverage;
@@ -101,13 +116,27 @@ export function rankItems(items, o) {
         const score = b.relevance.score - a.relevance.score;
         const native = (a.sourceRank ?? 0) - (b.sourceRank ?? 0);
         const stable = String(a.url).localeCompare(String(b.url));
-        if (o.sort === 'popular') return related || b.popularityScore - a.popularityScore || lang || score || native || newest || stable;
+        if (o.sort === 'popular') {
+            const popularity = Number(b.popularityScore !== null) - Number(a.popularityScore !== null)
+                || (b.popularityScore ?? 0) - (a.popularityScore ?? 0);
+            const fallback = a.popularityScore === null && b.popularityScore === null ? channelPriority(a) - channelPriority(b) : 0;
+            const channel = channelFirst ? channelPriority(a) - channelPriority(b) : 0;
+            return channel || related || popularity || fallback || lang || score || native || newest || stable;
+        }
         return o.sort === 'latest' ? newest || related || lang || score || native || stable : related || lang || score || newest || native || stable;
+    }).filter(item => {
+        // Keep the strongest result for an identical title across URLs/channels.
+        // Preserve punctuation: e.g. C and C++ are distinct topics.
+        const title = normalize(item.title);
+        if (!title) return false;
+        if (seenTitles.has(title)) return false;
+        seenTitles.add(title);
+        return true;
     });
 }
 export function rankingNote(o) {
     const language = regions[o.country].name;
-    if (o.sort === 'popular') return `${language} 우선 수집 · 검색어 일치도 유지 후 출처 내 조회·추천·스타 순위 우선 · 뉴스는 유사 보도 매체 수로 관심도 추정, 지표가 없으면 출처 검색 순서 보조 (조회수 아님) · 선택 기간 내 결과`;
+    if (o.sort === 'popular') return `${language} 우선 수집 · 여러 채널 중 인기 지표가 없는 자료가 있으면 뉴스 → 유튜브 → 커뮤니티 → 블로그 → 깃허브 순 · 각 채널 안에서는 검색어 일치도·조회·반응 순 · 뉴스 관심도는 유사 보도 기반 추정 · 동일 제목 제외`;
     return o.sort === 'latest'
         ? `${language} 우선 수집 · 전체 채널 게시/갱신 시각 내림차순 · 같은 시각이면 관련도·언어 우선`
         : `${language} 우선 수집 · 검색어 일치 비율 → 선택 언어 → 제목·설명 관련도 → 최신 시각 순 · 언어는 메타데이터/문자 기반 추정`;

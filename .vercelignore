@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+*.log
+*.test.js
+*.docx
+probe.mjs
+render.yaml

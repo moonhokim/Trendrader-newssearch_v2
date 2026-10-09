@@ -3,3 +3,8 @@ node_modules/
 *.log
 
 .vercel
+
+# Local update backups and duplicate source artwork
+.update-backups/
+/logo.png
+/banner.png

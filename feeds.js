@@ -35,7 +35,10 @@ export function plain(value) {
 export function iso(value) { const n = Date.parse(value); return Number.isFinite(n) ? new Date(n).toISOString() : null; }
 const list = value => value == null || value === '' ? [] : Array.isArray(value) ? value : [value];
 export function parseFeed(xml, source, fallbackPublisher = source) {
-    if (/<!DOCTYPE|<!ENTITY/i.test(xml) || XMLValidator.validate(xml) !== true) throw new Error('잘못된 RSS/Atom 응답');
+    // CDATA is literal article HTML, not XML declarations (e.g. GitHub Blog).
+    // Reject actual DTD/entity declarations while allowing them inside CDATA.
+    const declarations = String(xml).replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '');
+    if (/<!DOCTYPE|<!ENTITY/i.test(declarations) || XMLValidator.validate(xml) !== true) throw new Error('잘못된 RSS/Atom 응답');
     const data = parser.parse(xml);
     const channel = data?.rss?.channel;
     const atom = data?.feed;
@@ -52,6 +55,21 @@ export function parseFeed(xml, source, fallbackPublisher = source) {
     }).filter(item => item.title && item.url);
 }
 export const parseNews = xml => parseFeed(xml, 'Google News', '뉴스');
+
+// Direct publisher feeds supplement search indexes. Each has its own collection status.
+export const extraFeeds = {
+    newsBbc: { source: 'BBC News', url: 'https://feeds.bbci.co.uk/news/rss.xml', category: 'news' },
+    newsGuardian: { source: 'The Guardian', url: 'https://www.theguardian.com/world/rss', category: 'news' },
+    newsTechCrunch: { source: 'TechCrunch', url: 'https://techcrunch.com/feed/', category: 'news' },
+    newsScience: { source: 'ScienceDaily', url: 'https://www.sciencedaily.com/rss/all.xml', category: 'news' },
+    communityGeek: { source: 'GeekNews', url: 'https://news.hada.io/rss/news', category: 'reddit' },
+    blogGithub: { source: 'GitHub Blog', url: 'https://github.blog/feed/', category: 'blog' }
+};
+export async function collectExtraFeed(o, fetcher, provider) {
+    const feed = extraFeeds[provider];
+    if (!feed) throw new Error('지원하지 않는 피드입니다.');
+    return filterFeed(parseFeed(await fetcher(new URL(feed.url)), feed.source), o.query);
+}
 
 function relativeIso(value, now = Date.now()) {
     const text = plain(value).toLocaleLowerCase();

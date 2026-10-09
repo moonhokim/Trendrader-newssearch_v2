@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
-const labels = { news: 'Google 뉴스', youtube: 'YouTube', github: 'GitHub', blog: '블로그', reddit: 'Reddit', humor: '유머게시판' };
-const providerLabels = { ...labels, blogNaver: '네이버 블로그', blogDaum: '다음 블로그', blogTistory: '티스토리', blogDev: 'DEV 블로그', blogYozm: '요즘IT', blogMedium: 'Medium', blogWordPress: 'WordPress', humorPpomppu: '뽐뿌 유머/감동', humorToday: '오늘의유머', humorDc: '디시인사이드', humor9gag: '9GAG', humorBoredPanda: 'Bored Panda' };
+const labels = { news: '뉴스', youtube: 'YouTube', github: 'GitHub', blog: '블로그', reddit: '커뮤니티', humor: '유머게시판' };
+const providerLabels = { ...labels, reddit: 'Reddit', news: 'Google 뉴스', newsBbc: 'BBC News', newsGuardian: 'The Guardian', newsTechCrunch: 'TechCrunch', newsScience: 'ScienceDaily', communityGeek: 'GeekNews', blogGithub: 'GitHub Blog', blogNaver: '네이버 블로그', blogDaum: '다음 블로그', blogTistory: '티스토리', blogDev: 'DEV 블로그', blogYozm: '요즘IT', blogMedium: 'Medium', blogWordPress: 'WordPress', humorPpomppu: '뽐뿌 유머/감동', humorToday: '오늘의유머', humorDc: '디시인사이드', humor9gag: '9GAG', humorBoredPanda: 'Bored Panda' };
 Object.assign(providerLabels, { blogNote: 'note (일본)', blogHatena: 'はてなブログ (일본)', blogCsdn: 'CSDN (중국)', blogCnblogs: '博客园 (중국)' });
 let category = 'all';
 let currentItems = [];
@@ -13,7 +13,6 @@ let controller;
 let trendController;
 let sequence = 0;
 let timer;
-const icons = () => window.lucide?.createIcons();
 function node(tag, className, text) {
     const el = document.createElement(tag);
     if (className) el.className = className;
@@ -31,9 +30,11 @@ function dateText(item) {
     return item.date && Number.isFinite(Date.parse(item.date)) ? `${item.dateLabel} ${new Date(item.date).toLocaleString('ko-KR')}` : '게시 시각 미제공';
 }
 function sourceGroup(item) {
+    if (item.provider?.startsWith('blog') || item.source.includes('블로그') || ['티스토리', 'DEV 블로그', '요즘IT', 'Medium', 'WordPress', 'GitHub Blog', 'Stack Overflow Blog'].includes(item.source)) return 'blog';
+    if (item.provider?.startsWith('community') || item.provider?.startsWith('humor')) return 'community';
     if (item.source === 'GitHub') return 'code';
     if (item.source === 'YouTube') return 'video';
-    if (['Reddit', 'Hacker News', '뽐뿌 유머/감동', '오늘의유머', '디시인사이드', '9GAG', 'Bored Panda'].includes(item.source) || item.source.includes('블로그') || ['DEV 블로그', '요즘IT', 'Medium', 'WordPress'].includes(item.source)) return 'community';
+    if (['Reddit', 'Hacker News', '뽐뿌 유머/감동', '오늘의유머', '디시인사이드', '9GAG', 'Bored Panda'].includes(item.source)) return 'community';
     return 'news';
 }
 function detail(item) {
@@ -51,7 +52,7 @@ function render(items) {
     items.forEach(item => {
         const card = node('article', 'trend-card glass');
         const meta = node('div', 'card-meta-top');
-        const sourceClass = { YouTube: 'source-youtube', GitHub: 'source-github', '네이버 블로그': 'source-blog', '다음 블로그': 'source-blog', 티스토리: 'source-blog', Medium: 'source-blog', WordPress: 'source-blog', 'DEV 블로그': 'source-blog', '요즘IT': 'source-blog', Reddit: 'source-reddit', '뽐뿌 유머/감동': 'source-humor', 오늘의유머: 'source-humor', 디시인사이드: 'source-humor', '9GAG': 'source-humor', 'Bored Panda': 'source-humor' }[item.source] || 'source-news';
+        const sourceClass = { news: 'source-news', video: 'source-youtube', community: 'source-community', blog: 'source-blog', code: 'source-github' }[sourceGroup(item)];
         meta.append(node('span', `tag-source ${sourceClass}`, item.source), node('span', 'card-time', `${item.publisher} · ${dateText(item)}`));
         const title = node('button', 'card-title title-button', item.title);
         title.addEventListener('click', () => detail(item));
@@ -119,7 +120,7 @@ async function loadTrends() {
     }
 }
 function updateGroupTabs(items) {
-    const counts = { all: items.length, news: 0, video: 0, community: 0, code: 0 };
+    const counts = { all: items.length, news: 0, video: 0, community: 0, blog: 0, code: 0 };
     items.forEach(item => { counts[sourceGroup(item)] += 1; });
     document.querySelectorAll('.source-group-tab').forEach(tab => {
         const group = tab.dataset.group;
@@ -169,7 +170,10 @@ async function handleSearch(record = false) {
         lastParams = new URLSearchParams(params).toString().replace(/&?record=1/, '');
         $('feedList').classList.toggle('is-stale', Boolean(data.stale));
         loadTrends();
-        $('searchStatus').textContent = `${data.stale ? '최신 수집 실패 · 이전 캐시 결과 표시 중 · ' : data.cached ? '캐시 응답 · ' : ''}수집 ${new Date(data.collectedAt).toLocaleString('ko-KR')} · ${data.statuses.map(s => `${providerLabels[s.provider] || s.provider} ${s.stale ? '이전 수집 자료 · ' : ''}${s.ok ? `${s.count}건 조회` : `실패: ${s.error}`}`).join(' / ')}`;
+        const statuses = data.statuses || [];
+        const failed = statuses.filter(s => !s.ok).length;
+        const staleSources = statuses.filter(s => s.stale).map(s => `${providerLabels[s.provider] || s.provider} 이전 수집 자료`);
+        $('searchStatus').textContent = `${data.stale ? '최신 수집 실패 · 이전 캐시 결과 표시 중 · ' : data.cached ? '캐시 응답 · ' : ''}수집 ${new Date(data.collectedAt).toLocaleString('ko-KR')} · ${allItems.length}건${failed ? ` · ${failed}개 출처 연결 실패` : ''}${staleSources.length ? ` · ${staleSources.join(', ')}` : ''}`;
     } catch (e) {
         if (requestId !== sequence) return;
         $('searchStatus').textContent = e.name === 'AbortError' ? '검색 시간이 초과되었습니다. 다시 검색해 주세요.' : e.message;
@@ -260,6 +264,11 @@ restoreState();
     });
     $('categoryContainer').append(chip);
 });
+$('backToTop').addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+    $('trendHomeTitle').focus({ preventScroll: true });
+});
+$('mobileStatusLink').addEventListener('click', () => { $('collectionDetails').open = true; });
 $('exportBtn').addEventListener('click', exportCsv);
 $('sourceGroupTabs').addEventListener('click', event => {
     const tab = event.target.closest('.source-group-tab');
@@ -279,6 +288,5 @@ $('autoRefresh').addEventListener('change', () => { clearTimeout(timer); if ($('
 document.querySelector('#filterCountry').addEventListener('change', loadTrends);
 document.querySelector('#filterField').addEventListener('change', loadTrends);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && $('autoRefresh').checked) handleSearch(); });
-icons();
 loadTrends();
 handleSearch();

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import os from 'node:os';
-import { plain, safeUrl, canonicalUrl, iso, parseNews, parseYoutubeSearch, parseTrends, blog, humor } from './feeds.js';
+import { plain, safeUrl, canonicalUrl, iso, parseNews, parseYoutubeSearch, parseTrends, blog, humor, extraFeeds, collectExtraFeed } from './feeds.js';
 import { regions, localizedField, rankItems, rankingNote } from './search-policy.js';
 import { collectReddit } from './reddit.js';
 export { plain, safeUrl, parseNews, parseYoutubeSearch, parseTrends } from './feeds.js';
@@ -163,7 +163,9 @@ export async function search(o, fetcher = fetch) {
     const regionalBlogs = o.country === 'JP' ? { blogNote: ['note', 'note.com'], blogHatena: ['はてなブログ', 'hatenablog.com'] }
         : o.country === 'CN' ? { blogCsdn: ['CSDN', 'blog.csdn.net'], blogCnblogs: ['博客园', 'cnblogs.com'] } : {};
     for (const [key, [name, domain]] of Object.entries(regionalBlogs)) providers[key] = (o, f) => siteBlog(o, f, name, domain);
-    const selected = o.category === 'all' ? Object.keys(providers) : o.category === 'blog' ? ['blogNaver', 'blogDaum', 'blogTistory', 'blogDev', 'blogYozm', 'blogMedium', 'blogWordPress', ...Object.keys(regionalBlogs)] : o.category === 'humor' ? ['humorPpomppu', 'humorToday', 'humorDc', 'humor9gag', 'humorBoredPanda'] : [o.category];
+    for (const key of Object.keys(extraFeeds)) providers[key] = (o, f) => collectExtraFeed(o, url => upstream(url, false, f, o.country), key);
+    const base = o.category === 'blog' ? ['blogNaver', 'blogDaum', 'blogTistory', 'blogDev', 'blogYozm', 'blogMedium', 'blogWordPress', ...Object.keys(regionalBlogs)] : o.category === 'humor' ? ['humorPpomppu', 'humorToday', 'humorDc', 'humor9gag', 'humorBoredPanda'] : [o.category];
+    const selected = o.category === 'all' ? Object.keys(providers) : [...base, ...Object.keys(extraFeeds).filter(key => extraFeeds[key].category === o.category)];
     const timing = {};
     const results = await Promise.allSettled(selected.map(async key => {
         const started = Date.now();
@@ -225,7 +227,7 @@ export function createServer(fetcher = fetch, config = {}) {
         })().finally(() => trendPending.delete(key)));
         return trendPending.get(key);
     }
-    const root = new URL('./', import.meta.url);
+    const root = new URL('./public/', import.meta.url);
     return http.createServer(async (req, res) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Cache-Control', 'no-store');
@@ -278,7 +280,7 @@ export function createServer(fetcher = fetch, config = {}) {
                 cache.set(key, { time: now(), data, ttl: data.statuses.every(s => s.ok) ? 60000 : 15000 });
                 return send(200, responseData(data));
             }
-            const files = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/reset.css': ['reset.css', 'text/css; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/bg.jpg': ['bg.jpg', 'image/jpeg'] };
+            const files = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/brand/trend-radar-logo-en.png': ['brand/trend-radar-logo-en.png', 'image/png'], '/brand/trend-radar-banner-en.png': ['brand/trend-radar-banner-en.png', 'image/png'], '/reset.css': ['reset.css', 'text/css; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
             if (!Object.hasOwn(files, url.pathname)) return send(404, { error: '페이지가 없습니다.' });
             const [name, type] = files[url.pathname];
             const body = await readFile(new URL(name, root));

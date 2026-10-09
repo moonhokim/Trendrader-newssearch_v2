@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
-const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
-const script = await readFile(new URL('./app.js', import.meta.url), 'utf8');
+const html = await readFile(new URL('./public/index.html', import.meta.url), 'utf8');
+const script = await readFile(new URL('./public/app.js', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const item = { title: '실제 기사 제목', source: '뽐뿌 유머/감동', publisher: '작성자', date: new Date().toISOString(), dateLabel: '게시', description: '정상적인 기사 설명', metrics: [], url: 'https://example.com/article?id=1&no=2' };
 function setup(fetcher, url = 'http://localhost:3000', savedState) {
@@ -22,7 +22,8 @@ test('frontend renders real text, new tabs, detail and safe original link; recor
     t.after(() => dom.window.close());
     await flush();
     const doc = dom.window.document;
-    assert.equal(doc.querySelector('.brand-text').textContent, 'GLOBAL TREND SEARCH');
+    assert.equal(doc.querySelector('.brand-image').alt, 'TREND RADAR');
+    assert.equal(doc.querySelector('.brand-image').getAttribute('src'), '/brand/trend-radar-logo-en.png');
     assert.match(doc.querySelector('.ticker-label').textContent, /사이트 내 검색 기록/);
     assert.equal(doc.querySelectorAll('link[rel="stylesheet"][href$=".css"]').length, 2);
     assert.equal(doc.querySelectorAll('style, [style]').length, 0);
@@ -30,7 +31,7 @@ test('frontend renders real text, new tabs, detail and safe original link; recor
     assert.equal(doc.querySelector('#feedList .btn-view-original').href, item.url);
     assert.equal(doc.querySelector('#feedList .btn-view-original').rel, 'noopener noreferrer');
     const tabs = [...doc.querySelectorAll('.category-chip')];
-    for (const name of ['YouTube', '블로그', 'Reddit', '유머게시판']) assert.ok(tabs.some(t => t.textContent === name));
+    for (const name of ['YouTube', '블로그', '커뮤니티', '유머게시판']) assert.ok(tabs.some(t => t.textContent === name));
     doc.querySelector('.title-button').click();
     assert.equal(doc.querySelector('#splitView').classList.contains('is-open'), true);
     doc.querySelector('#closeSplitBtn').click();
@@ -192,4 +193,40 @@ test('saved sorting survives default change; server ranking note and stale sourc
     assert.match(doc.querySelector('#searchStatus').textContent, /네이버 블로그 이전 수집 자료/);
     assert.match(doc.querySelector('#sourceStatuses .source-error').textContent, /이전 수집 자료 · 최신 갱신 실패/);
     assert.match(doc.querySelector('#sourceStatuses').textContent, /최근 성공 자료로 대체/);
+});
+
+test('search follows filters, collection details start closed and top button scrolls', async t => {
+    const dom = setup(async () => response());
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    assert.ok(doc.querySelector('#filterCountry').compareDocumentPosition(doc.querySelector('#searchInput')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+    const details = doc.querySelector('#collectionDetails');
+    assert.equal(details.open, false);
+    details.querySelector('summary').click();
+    assert.equal(details.open, true);
+    details.querySelector('summary').click();
+    assert.equal(details.open, false);
+    let scroll;
+    dom.window.scrollTo = options => { scroll = options; };
+    doc.querySelector('#backToTop').click();
+    assert.equal(scroll.top, 0);
+    assert.equal(doc.activeElement.id, 'trendHomeTitle');
+    doc.querySelector('#mobileStatusLink').click();
+    assert.equal(details.open, true);
+});
+
+test('blog and community feeds have separate result tabs and compact status', async t => {
+    const dom = setup(async () => response({ items: [
+        { ...item, provider: 'blogGithub', source: 'GitHub Blog', title: 'Blog post' },
+        { ...item, provider: 'communityGeek', source: 'GeekNews', title: 'Community post' }
+    ] }));
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    assert.equal(doc.querySelector('[data-group="blog"] span').textContent, '1');
+    assert.equal(doc.querySelector('[data-group="community"] span').textContent, '1');
+    doc.querySelector('[data-group="blog"]').click();
+    assert.equal(doc.querySelector('.card-title').textContent, 'Blog post');
+    assert.doesNotMatch(doc.querySelector('#searchStatus').textContent, /건 조회/);
 });

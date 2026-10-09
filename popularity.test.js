@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { once } from 'node:events';
 import { rankItems, metricNumber } from './search-policy.js';
-import { options, search } from './server.js';
+import { options, search, createServer } from './server.js';
 import { createRedditCollector } from './reddit.js';
 
 const base = { query: 'AI', country: 'KR', sort: 'popular' };
@@ -22,9 +23,9 @@ test('news prioritizes cross-publisher coverage and labels estimates; missing me
     const items = rankItems([newItem, old, same], base);
     assert.equal(items[0].title, old.title);
     assert.match(items[0].popularityBasis, /2개 매체.*조회수 아님/);
-    assert.match(items.at(-1).popularityBasis, /미제공/);
+    assert.equal(items.at(-1).popularityBasis, null);
     const duplicates = rankItems([old, { ...old, url: 'https://a.test/3' }], base);
-    assert.ok(duplicates.every(i => !i.popularityBasis.includes('2개')));
+    assert.ok(duplicates.every(i => i.popularityBasis === null));
 });
 test('GitHub popular requests stars and ranks by real star counts', async () => {
     const data = await search(options(new URLSearchParams({ q: 'AI', category: 'github', period: 'all' })), async url => {
@@ -71,6 +72,19 @@ test('public YouTube popular filters upload window before collecting candidates'
     assert.equal(data.items.length, 1);
     assert.equal(data.items[0].metrics[0], '1.2M views');
 });
-test('Vercel static assets match the edited application', async () => {
-    for (const file of ['app.js', 'index.html']) assert.equal(await readFile(new URL(file, import.meta.url), 'utf8'), await readFile(new URL(`public/${file}`, import.meta.url), 'utf8'));
+test('local server and Vercel routes serve the same public application assets', async t => {
+    const config = JSON.parse(await readFile(new URL('vercel.json', import.meta.url), 'utf8'));
+    const server = createServer();
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    const base = `http://127.0.0.1:${server.address().port}`;
+    for (const [path, file] of [['/', 'index.html'], ['/app.js', 'app.js'], ['/style.css', 'style.css'], ['/reset.css', 'reset.css']]) {
+        const response = await fetch(base + path);
+        assert.equal(response.status, 200, path);
+        assert.equal(await response.text(), await readFile(new URL(`public/${file}`, import.meta.url), 'utf8'), path);
+        const route = config.routes.find(route => route.src && new RegExp(`^(?:${route.src})$`).test(path));
+        assert.ok(route, `Vercel route for ${path}`);
+        assert.equal(path.replace(new RegExp(`^(?:${route.src})$`), route.dest), `/public/${file}`);
+    }
 });

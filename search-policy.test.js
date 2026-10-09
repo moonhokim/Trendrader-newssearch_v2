@@ -6,6 +6,33 @@ import { parseYoutubeSearch } from './feeds.js';
 
 const item = (title, date, description = '') => ({ title, description, date, url: `https://example.com/${encodeURIComponent(title)}` });
 const settings = (extra = {}) => ({ query: 'AI robot', language: 'ko', country: 'KR', sort: 'relevance', ...extra });
+
+test('identical normalized titles across channels keep the strongest ranked result', () => {
+    const older = { ...item('ＡＩ   Robot', '2026-09-20'), provider: 'news' };
+    const newer = { ...item('ai robot', '2026-09-22'), provider: 'blogDev' };
+    const distinct = item('AI robot?', '2026-09-21');
+    const result = rankItems([older, newer, distinct], settings({ sort: 'latest' }));
+    assert.deepEqual(result.map(i => i.url), [newer.url, distinct.url]);
+    assert.equal(rankItems([older, newer], settings({ sort: 'popular' }))[0].provider, 'news');
+    assert.equal(rankItems([item('C', null), item('C++', null)], settings()).length, 2);
+    assert.equal(rankItems([item(' ', null), item('\u3000', null), item('AI', null), item('ai', null)], settings()).length, 1);
+});
+
+test('popular results without metrics follow the requested channel order across providers', () => {
+    const providers = ['github', 'blogDev', 'humorToday', 'youtube', 'news'];
+    const result = rankItems(providers.map((provider, i) => ({ ...item(`AI robot ${provider}`, `2026-09-${25 + i}`), provider, sourceRank: i + 1 })), settings({ sort: 'popular' }));
+    assert.deepEqual(result.map(i => i.provider), ['news', 'youtube', 'humorToday', 'blogDev', 'github']);
+    assert.ok(result.every(i => i.popularityScore === null));
+    assert.ok(result.every(i => i.popularityBasis === null));
+});
+
+test('real zero engagement remains a known metric and ranks before missing signals', () => {
+    const unknown = { ...item('AI robot unknown repo', null), provider: 'github' };
+    const measured = { ...item('AI robot repo', null), provider: 'github', engagementValue: 0 };
+    const result = rankItems([unknown, measured], settings({ sort: 'popular' }));
+    assert.equal(result[0].url, measured.url);
+    assert.equal(result[0].popularityScore, 0.5);
+});
 test('relevance compares all sources by coverage, title and description instead of alternating', () => {
     const first = item('AI robot 안내', '2026-09-20');
     const second = item('한국 기술 안내', '2026-09-22', 'AI robot 소식');
@@ -71,4 +98,40 @@ test('all-category ranking is applied before the 100-result limit', async () => 
     assert.equal(data.items.length, 100);
     assert.equal(data.items[0].title, 'AI robot 한국어 안내');
     assert.equal(data.truncated, true);
+});
+
+test('search removes repeated titles before counting and limiting results', async () => {
+    const xml = `<rss><channel>${Array.from({ length: 105 }, (_, i) => `<item><title>AI robot repeated</title><link>https://example.com/repeated/${i}</link></item>`).join('')}<item><title>AI robot distinct</title><link>https://example.com/distinct</link></item></channel></rss>`;
+    const data = await search(options(new URLSearchParams({ category: 'news', q: 'AI robot', period: 'all' })), async () => new Response(xml));
+    assert.equal(data.totalMatched, 2);
+    assert.equal(data.items.length, 2);
+    assert.equal(data.truncated, false);
+    assert.equal(data.statuses[0].displayedCount, 2);
+});
+
+test('mixed popularity signals cannot move community or GitHub ahead of missing-metric news', () => {
+    const candidates = [
+        { ...item('AI robot repo', '2026-10-03'), provider: 'github', engagementValue: 999999 },
+        { ...item('AI robot forum', '2026-10-03'), provider: 'reddit', engagementValue: 90000 },
+        { ...item('AI blog', '2026-10-02'), provider: 'blogDev' },
+        { ...item('AI video', '2026-10-02'), provider: 'youtube', source: 'YouTube', metrics: ['조회 1000000'] },
+        { ...item('AI news', '2026-10-01'), provider: 'news' }
+    ];
+    for (const input of [candidates, [...candidates].reverse(), [...candidates.slice(2), ...candidates.slice(0, 2)]]) {
+        const result = rankItems(input, settings({ sort: 'popular' }));
+        assert.deepEqual(result.map(i => i.provider), ['news', 'youtube', 'reddit', 'blogDev', 'github']);
+    }
+    assert.equal(rankItems(candidates, settings({ sort: 'relevance' }))[0].relevance.coverage, 1);
+    assert.equal(rankItems(candidates, settings({ sort: 'latest' }))[0].date, '2026-10-03');
+});
+
+test('channel fallback retains actual popularity sorting within each channel', () => {
+    const candidates = [
+        { ...item('AI robot small repo', null), provider: 'github', engagementValue: 1 },
+        { ...item('AI robot blog', null), provider: 'blogDev' },
+        { ...item('AI robot big repo', null), provider: 'github', engagementValue: 50000 },
+        { ...item('AI robot news', null), provider: 'news' }
+    ];
+    assert.deepEqual(rankItems(candidates, settings({ sort: 'popular' })).map(i => i.title),
+        ['AI robot news', 'AI robot blog', 'AI robot big repo', 'AI robot small repo']);
 });

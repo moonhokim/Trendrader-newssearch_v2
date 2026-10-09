@@ -48,9 +48,9 @@ test('blog category searches Korean and international blog platforms', async () 
     const result = await search(options(new URLSearchParams('category=blog&q=web%20design&period=all')), async url => {
         urls.push(url);
         const domain = url.searchParams.get('q')?.match(/site:([^ ]+)/)?.[1] || url.hostname;
-        return new Response(rss(`<item><title>WEB guide</title><link>https://example.com/${domain}/match</link><description>Design tips</description></item><item><title>Web only</title><link>https://example.com/${domain}/miss</link><description>Other topic</description></item>`));
+        return new Response(rss(`<item><title>WEB guide ${domain}</title><link>https://example.com/${domain}/match</link><description>Design tips</description></item><item><title>Web only ${domain}</title><link>https://example.com/${domain}/miss</link><description>Other topic</description></item>`));
     });
-    assert.deepEqual(result.statuses.map(s => s.provider), ['blogNaver', 'blogDaum', 'blogTistory', 'blogDev', 'blogYozm', 'blogMedium', 'blogWordPress']);
+    assert.deepEqual(result.statuses.map(s => s.provider), ['blogNaver', 'blogDaum', 'blogTistory', 'blogDev', 'blogYozm', 'blogMedium', 'blogWordPress', 'blogGithub']);
     assert.ok(urls.some(url => url.searchParams.get('q')?.includes('site:blog.naver.com')));
     assert.ok(urls.some(url => url.searchParams.get('q')?.includes('site:medium.com')));
     assert.ok(result.items.length >= 7);
@@ -61,7 +61,8 @@ test('humor category searches Korean and international humor feeds', async () =>
     const urls = [];
     const humor = await search(options(new URLSearchParams({ category: 'humor', q: '고양이', period: 'all' })), async url => {
         urls.push(url);
-        return new Response(rss(`<item><title>고양이 이야기</title><link>https://example.com/${encodeURIComponent(url.hostname + url.pathname)}/1</link></item><item><title>다른 이야기</title><link>https://example.com/${encodeURIComponent(url.hostname + url.pathname)}/2</link></item>`));
+        const source = url.searchParams.get('q')?.match(/site:([^ ]+)/)?.[1] || url.hostname;
+        return new Response(rss(`<item><title>고양이 이야기 ${source}</title><link>https://example.com/${encodeURIComponent(source)}/1</link></item><item><title>다른 이야기 ${source}</title><link>https://example.com/${encodeURIComponent(source)}/2</link></item>`));
     });
     assert.equal(urls.length, 5);
     assert.ok(urls.some(url => url.hostname === 'www.ppomppu.co.kr'));
@@ -151,7 +152,7 @@ test('HTTP routes, cache, validation, partial/total failure and private file den
     const path = '/api/search?category=news&q=AI';
     assert.equal((await (await get(path)).json()).cached, false);
     assert.equal((await (await get(path)).json()).cached, true);
-    assert.equal(calls, 1);
+    assert.equal(calls, 5);
     fail = true;
     const failed = await get('/api/search?category=news&q=other');
     assert.equal(failed.status, 502);
@@ -159,10 +160,11 @@ test('HTTP routes, cache, validation, partial/total failure and private file den
 });
 test('trends count explicit manual requests including cache hits, excluding automatic and invalid requests', async t => {
     let calls = 0;
+    let offlineSearch = false;
     const server = createServer(async url => {
         if (url.hostname === 'trends.google.com') throw new Error('offline trends');
         calls++;
-        if (url.searchParams.get('q')?.startsWith('Offline')) throw new Error('offline');
+        if (offlineSearch) throw new Error('offline');
         return new Response(rss());
     });
     server.listen(0, '127.0.0.1');
@@ -181,10 +183,12 @@ test('trends count explicit manual requests including cache hits, excluding auto
     assert.deepEqual(manual.trends, [{ query: 'robot', count: 1 }]);
     await get(path + '&record=1');
     await get(path);
-    assert.equal(calls, 1);
+    assert.equal(calls, 5);
     await get('/api/search?category=news&q=&record=1');
     await get('/api/search?category=invalid&q=Other&record=1');
+    offlineSearch = true;
     const offline = await fetch(base + '/api/search?category=news&q=Offline&record=1');
+    offlineSearch = false;
     assert.equal(offline.status, 502);
     assert.deepEqual((await get('/api/trends')).trends, [{ query: 'robot', count: 2 }]);
     const fresh = await get('/api/search?category=news&q=Fresh&record=1');

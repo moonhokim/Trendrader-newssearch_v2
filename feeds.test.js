@@ -57,3 +57,9 @@ test('Trends keeps source metadata without inventing ranks or missing traffic', 
     assert.equal(items[1].count, '');
     assert.throws(() => parseTrends('<html/>'));
 });
+
+test('literal article HTML doctype inside CDATA is safe while XML DTD stays blocked', () => {
+    const xml = '<rss><channel><item><title>Article</title><link>https://example.com/post</link><content:encoded><![CDATA[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"><html><body><p>Readable article</p></body></html>]]></content:encoded></item></channel></rss>';
+    assert.equal(parseFeed(xml, 'GitHub Blog')[0].description, 'Readable article');
+    assert.throws(() => parseFeed('<!DOCTYPE rss [<!ENTITY ext SYSTEM "file:///private">]>' + xml, 'RSS'));
+});
