@@ -1,4 +1,4 @@
-﻿# Global Trend Search
+﻿# Trend Rader
 
 뉴스·YouTube·GitHub·DEV·요즘IT·네이버·다음·티스토리·Medium·WordPress·Reddit·뽐뿌·오늘의유머·디시인사이드·9GAG·Bored Panda 통합 검색 사이트입니다. 공개 RSS/API/검색 페이지에 반영된 범위이며, 전체 게시물 또는 초 단위 실시간 순위를 보장하지 않습니다.
 
