@@ -91,9 +91,9 @@ test('imported video search preserves filters, subscriber enrichment, sorting an
     assert.equal(doc.querySelector('[data-sort="viralScore"]').classList.contains('active'), true);
     assert.ok(doc.querySelector('.copy-btn'));
     assert.ok(doc.querySelector('.ai-btn'));
-    doc.querySelector('[data-tab="keyword"]').click();
-    assert.equal(doc.querySelector('#tab-keyword').classList.contains('active'), true);
-    assert.ok(doc.querySelector('#kwRunBtn'));
+    assert.equal(doc.querySelector('#tab-keyword'), null);
+    assert.equal(doc.querySelector('#kwRunBtn'), null);
+    assert.equal(doc.querySelector('[data-tab="keyword"]'), null);
     assert.equal(dom.window.matchFormat({sec:180}, 'short'), true);
     assert.equal(dom.window.matchFormat({sec:181}, 'short'), false);
     assert.equal(dom.window.safeMediaUrl('javascript:alert(1)'), '');

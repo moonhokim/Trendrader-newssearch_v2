@@ -305,6 +305,19 @@ function switchView(view) {
     if (view === 'video' && !$('videoSearchFrame').getAttribute('src')) $('videoSearchFrame').src = $('videoSearchFrame').dataset.src;
 }
 document.querySelectorAll('.workspace-tab').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
+let videoResizeObserver;
+$('videoSearchFrame').addEventListener('load', () => {
+    videoResizeObserver?.disconnect();
+    const frame = $('videoSearchFrame');
+    const body = frame.contentDocument?.body;
+    if (!body) return;
+    const fitHeight = () => { frame.style.height = `${Math.max(500, Math.ceil(body.scrollHeight))}px`; };
+    fitHeight();
+    if (window.ResizeObserver) {
+        videoResizeObserver = new ResizeObserver(fitHeight);
+        videoResizeObserver.observe(body);
+    }
+});
 let communityController;
 let communitySequence = 0;
 $('communityForm').addEventListener('submit', async event => {

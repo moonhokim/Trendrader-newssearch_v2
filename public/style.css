@@ -216,3 +216,17 @@ input[type=checkbox] { accent-color: var(--secondary); width: 16px; height: 16px
 :root[data-theme="light"] .bottom-nav { background:#fff; }
 :root[data-theme="light"] .video-search-frame { background:#f6f8fc; border-color:var(--glass-border); }
 @media(max-width:1100px) { header .header-actions { display:flex; margin-left:auto; } .header-actions .badge-architect { display:none; } }
+.video-search-frame { min-height:0; height:700px; }
+@media(max-width:700px) {
+    header { padding:12px 16px; gap:12px; }
+    header .brand { min-width:0; flex:1; }
+    header .brand-image { width:min(190px,100%); }
+    .theme-control { flex-direction:column; align-items:flex-start; gap:2px; }
+    .theme-control select { min-height:44px; font-size:16px; max-width:130px; }
+    .workspace-nav { margin-top:12px; }
+    .workspace-view { margin:16px auto; padding:0 12px; }
+    .video-search-frame { min-height:0; border-radius:12px; margin-top:12px; }
+    .section-heading { margin-bottom:12px; }
+    .workspace-view .section-description { font-size:14px; }
+    .community-form .filter-select, .community-form .search-input { font-size:16px; }
+}
