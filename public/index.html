@@ -18,6 +18,7 @@
 
     <link rel="stylesheet" href="reset.css">
     <link rel="stylesheet" href="style.css">
+    <script src="/theme.js"></script>
 </head>
 <body>
 
@@ -38,12 +39,18 @@
         </div>
 
         <div class="header-actions">
+            <label class="theme-control" for="themeSelect">화면 모드 <select id="themeSelect" aria-label="화면 모드 선택"><option value="dark">다크 모드</option><option value="light">라이트 모드</option></select></label>
             <span class="badge-architect">LIVE SOURCES</span>
         </div>
     </header>
 
+    <nav class="workspace-nav" aria-label="주요 서비스">
+        <button type="button" class="workspace-tab active" data-view="information" aria-controls="informationView" aria-pressed="true">정보검색</button>
+        <button type="button" class="workspace-tab" data-view="video" aria-controls="videoView" aria-pressed="false">영상검색</button>
+        <button type="button" class="workspace-tab" data-view="community" aria-controls="communityView" aria-pressed="false">커뮤니티</button>
+    </nav>
     <!-- Main Container -->
-    <main class="main-container">
+    <main class="main-container" id="informationView">
 
         <section class="trend-home glass" aria-labelledby="trendHomeTitle">
             <div class="section-heading">
@@ -138,6 +145,27 @@
         </div>
 
     </main>
+
+    <section id="videoView" class="workspace-view" aria-labelledby="videoHeading" hidden>
+        <div class="section-heading"><div><p class="eyebrow">VIDEO INSIGHT</p><h1 id="videoHeading">영상검색</h1><p class="section-description">영상과 채널을 비교하고, 떡상지수로 콘텐츠 기회를 발견하세요.</p><p class="source-note">V6의 YouTube·Dailymotion·PeerTube 통합 검색과 숏폼·롱폼 필터를 제공합니다. 사이트 서버에서 영상 제공처를 조회합니다. 외부 서비스의 접근 제한 또는 검색 조건에 따라 결과가 없을 수 있습니다.</p></div></div>
+        <iframe id="videoSearchFrame" title="YouTube 영상검색 및 인사이트" data-src="/video-search.html" allow="clipboard-write" class="video-search-frame"></iframe>
+    </section>
+
+    <section id="communityView" class="workspace-view" aria-labelledby="communityHeading" hidden>
+        <div class="search-section glass">
+            <p class="eyebrow">COMMUNITY</p><h1 id="communityHeading">커뮤니티</h1><p class="section-description">한국과 해외 커뮤니티의 이야기를 함께 탐색하세요.</p>
+            <p class="source-note">한국: GeekNews·클리앙·루리웹·에펨코리아·뽐뿌·디시인사이드·오늘의유머. GeekNews는 RSS, 나머지 한국 출처는 Google 뉴스의 사이트 한정 검색으로 수집하므로 색인된 공개 글만 표시합니다.</p>
+            <form id="communityForm" class="community-form">
+                <label for="communityScope">커뮤니티 범위</label><select id="communityScope" class="filter-select"><option value="all">전체</option><option value="korea">한국 커뮤니티</option><option value="global">해외 커뮤니티</option></select>
+                <label for="communityQuery">검색어</label><input id="communityQuery" class="search-input" maxlength="180" placeholder="관심 있는 주제 입력">
+                <label for="communityCountry">국가·우선 언어</label><select id="communityCountry" class="filter-select"><option value="KR">대한민국</option><option value="US">미국</option><option value="JP">일본</option><option value="CN">중국</option><option value="GB">영국</option></select>
+                <label for="communitySort">정렬 기준</label><select id="communitySort" class="filter-select"><option value="popular">인기순</option><option value="latest">최신순</option><option value="relevance">관련도순</option></select>
+                <button type="submit" id="communitySearchBtn" class="btn-search">커뮤니티 검색</button>
+            </form>
+            <p id="communityStatus" role="status" aria-live="polite">검색어를 입력하거나 검색 버튼으로 최근 이야기를 살펴보세요.</p>
+        </div>
+        <div id="communityResults" class="feed-list" aria-live="polite"></div>
+    </section>
 
     <nav class="bottom-nav" aria-label="주요 메뉴">
         <a href="#trendHomeTitle" class="bottom-nav-item active"><span>홈</span></a>

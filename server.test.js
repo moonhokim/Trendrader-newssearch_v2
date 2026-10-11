@@ -126,7 +126,9 @@ test('queries are encoded, locale and time bounds reach providers, invalid URLs 
     assert.equal(urls[0].searchParams.get('ceid'), 'JP:ja');
     assert.match(urls[1].searchParams.get('q'), /pushed:>=/);
     assert.equal(urls[2].hostname, 'www.youtube.com');
-    assert.equal(result.items.length, 1);
+    assert.equal(result.items.length, 2);
+    assert.ok(result.items.every(item => /^https?:/.test(item.url)));
+    assert.ok(result.items.some(item => item.provider === 'communityHn'));
 });
 test('HTTP routes, cache, validation, partial/total failure and private file denial', async t => {
     let calls = 0;

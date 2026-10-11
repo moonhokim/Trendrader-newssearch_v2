@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+const html=await readFile(new URL('./public/video-search.html',import.meta.url),'utf8');
+const script=await readFile(new URL('./public/video-search.js',import.meta.url),'utf8');
+test('stock short videos today use same-origin collectors and empty results are not errors',async t=>{
+    const dom=new JSDOM(html,{url:'https://example.com/video-search.html',runScripts:'outside-only'});
+    t.after(()=>dom.window.close());
+    const requests=[];
+    let empty=false;
+    dom.window.fetch=async url=>{
+        assert.ok(url.startsWith('/api/'));
+        const request=new URL(url,'https://example.com'); requests.push(request);
+        const data=request.pathname==='/api/search'?{items:empty?[]:[{title:'주식 숏폼',url:'https://www.youtube.com/watch?v=abcdefghijk',publisher:'Channel',date:new Date().toISOString(),durationSeconds:60,viewCount:10}]}:request.searchParams.get('platform')==='dailymotion'?{list:[]}:{data:[]};
+        return {ok:true,text:async()=>JSON.stringify(data)};
+    };
+    dom.window.eval(script);
+    const doc=dom.window.document;
+    doc.getElementById('keyword').value='주식';
+    doc.getElementById('apiFormat').value='short';
+    doc.getElementById('apiDate').value='24h';
+    await dom.window.fetchData();
+    assert.equal(doc.querySelectorAll('.video-card').length,1);
+    assert.equal(requests[0].searchParams.get('period'),'1d');
+    assert.equal(requests[0].searchParams.get('videoDuration'),'short');
+    assert.equal(requests.length,3);
+    empty=true;
+    await dom.window.fetchData();
+    assert.equal(doc.querySelector('.err-box'),null);
+    assert.match(doc.getElementById('resultCount').textContent,/결과 0개/);
+    assert.match(doc.querySelector('.empty-state').textContent,/최근 1주로 다시 검색/);
+});

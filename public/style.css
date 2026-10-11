@@ -180,3 +180,39 @@ input[type=checkbox] { accent-color: var(--secondary); width: 16px; height: 16px
     .trending-ticker { min-height: 108px; padding: .8rem; gap: .7rem; }
     .ticker-heading { max-width: 120px; }
 }
+/* Primary service navigation and independent workspaces. */
+[hidden] { display: none !important; }
+.workspace-nav { display:flex; gap:8px; max-width:1440px; margin:20px auto 0; padding:0 24px; }
+.workspace-tab { border:1px solid var(--border-color, #334155); background:transparent; color:inherit; padding:13px 24px; border-radius:12px; font:inherit; cursor:pointer; }
+.workspace-tab.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+.workspace-tab:focus-visible { outline:3px solid #60a5fa; outline-offset:3px; }
+.workspace-view { max-width:1400px; margin:24px auto; padding:0 24px; }
+.video-search-frame { display:block; width:100%; height:calc(100dvh - 200px); min-height:700px; border:1px solid #334155; border-radius:16px; margin-top:20px; background:#0f0f0f; }
+.community-form { display:grid; grid-template-columns:auto minmax(120px, 1fr) auto minmax(110px, 160px) auto minmax(110px, 160px); gap:12px; align-items:center; margin:24px 0; }
+.community-form .btn-search { grid-column:1 / -1; justify-self:end; }
+@media(max-width:700px) { .workspace-nav { padding:0 16px; gap:6px; } .workspace-tab { flex:1; padding:12px 8px; } .workspace-view { padding:0 16px; } .community-form { grid-template-columns:1fr; } .community-form .btn-search { width:100%; } .video-search-frame { min-height:800px; } }
+/* Both themes share layout and keep the chosen palette across services. */
+:root[data-theme="light"] { color-scheme:light; --bg-color:#f3f6fb; --text-main:#17243a; --text-muted:#53647b; --primary:#2257ae; --secondary:#08765f; --accent:#a65b0b; --glass-border:#ced8e5; --glass-bg:#fff; }
+.header-actions { display:flex; gap:16px; align-items:center; }
+.theme-control { display:flex; gap:8px; align-items:center; white-space:nowrap; font-size:.78rem; color:var(--text-muted); }
+.theme-control select { background:var(--glass-bg); color:var(--text-main); border:1px solid var(--glass-border); border-radius:8px; padding:8px; }
+:root[data-theme="light"] .trend-home { background:linear-gradient(125deg,#e3f4ef,#fff 70%); }
+:root[data-theme="light"] .trend-home-card, :root[data-theme="light"] .category-chip, :root[data-theme="light"] .source-group-tab { background:#f1f5fa; border-color:var(--glass-border); }
+:root[data-theme="light"] .trend-home-card:hover { background:#e2f1eb; }
+:root[data-theme="light"] .category-chip.active, :root[data-theme="light"] .source-group-tab.active { background:#d9f1e8; color:#075b47; border-color:#79ad9c; }
+:root[data-theme="light"] .filter-select, :root[data-theme="light"] .search-input { background:#fff; border-color:#9baec4; }
+:root[data-theme="light"] .search-input::placeholder { color:#65758b; }
+:root[data-theme="light"] .btn-search { background:#08765f; color:#fff; }
+:root[data-theme="light"] .btn-search:hover { background:#075e4d; }
+:root[data-theme="light"] .card-summary-box { color:#40536c; }
+:root[data-theme="light"] .btn-view-original, :root[data-theme="light"] .btn-close-split { background:#edf2f8; border-color:#aebed1; }
+:root[data-theme="light"] .btn-view-original:hover, :root[data-theme="light"] .btn-close-split:hover { background:#dfe8f3; }
+:root[data-theme="light"] .source-error, :root[data-theme="light"] .source-error strong { color:#915211; border-color:#b6854b; }
+:root[data-theme="light"] .tag-source { background:#deebff; color:#214d87; }
+:root[data-theme="light"] .source-youtube { background:#ffe4e5; color:#a32b37; }
+:root[data-theme="light"] .source-github { background:#e9e5ff; color:#534186; }
+:root[data-theme="light"] .source-blog { background:#f1e2ff; color:#734497; }
+:root[data-theme="light"] .source-community { background:#dcf1e6; color:#236247; }
+:root[data-theme="light"] .bottom-nav { background:#fff; }
+:root[data-theme="light"] .video-search-frame { background:#f6f8fc; border-color:var(--glass-border); }
+@media(max-width:1100px) { header .header-actions { display:flex; margin-left:auto; } .header-actions .badge-architect { display:none; } }

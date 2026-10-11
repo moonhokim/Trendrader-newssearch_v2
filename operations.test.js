@@ -10,6 +10,25 @@ async function serve(t, fetcher, config) {
     t.after(() => { server.closeAllConnections(); server.close(); });
     return path => fetch(`http://127.0.0.1:${server.address().port}${path}`);
 }
+
+test('video platform endpoint fixes hosts, validates conditions, caches and separates empty from failed', async t => {
+    const calls=[];
+    const get=await serve(t,async url => { calls.push(url); return Response.json(url.hostname==='api.dailymotion.com'?{list:[]}:{data:[]}); });
+    const path='/api/video-platform?platform=dailymotion&q='+encodeURIComponent('주식')+'&date=24h&pages=2';
+    const result=await get(path);
+    assert.equal(result.status,200);
+    assert.deepEqual((await result.json()).list,[]);
+    await get(path);
+    assert.equal(calls.length,1);
+    assert.equal(calls[0].hostname,'api.dailymotion.com');
+    assert.ok(calls[0].searchParams.has('created_after'));
+    assert.equal((await get('/api/video-platform?platform=https://evil.test&q=AI')).status,400);
+    assert.equal((await get('/api/video-platform?platform=peertube&q=AI&pages=500')).status,400);
+    await get('/api/video-platform?platform=peertube&q=AI');
+    assert.equal(calls[1].hostname,'sepiasearch.org');
+    const failed=await serve(t,async () => new Response('',{status:503}));
+    assert.equal((await failed(path)).status,502);
+});
 test('trends coalesces concurrent requests and caches external data per country', async t => {
     let calls = 0;
     const get = await serve(t, async () => { calls++; return new Response(rss); });

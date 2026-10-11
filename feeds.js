@@ -93,9 +93,15 @@ export function parseYoutubeSearch(html) {
         if (value.videoRenderer?.videoId) {
             const item = value.videoRenderer;
             const text = value => value?.simpleText || value?.runs?.map(run => run.text).join('') || '';
+            const duration = text(item.lengthText).split(':').map(Number);
+            const durationSeconds = duration.length > 1 && duration.every(Number.isFinite) ? duration.reduce((seconds, part) => seconds * 60 + part, 0) : null;
+            const views = text(item.viewCountText || item.shortViewCountText).replace(/,/g, '');
+            const exactViews = /^(?:조회수\s*)?(\d+)\s*(?:회|views?)?$/i.exec(views.trim());
             results.push({
                 title: plain(text(item.title)).slice(0, 500), url: safeUrl(`https://www.youtube.com/watch?v=${encodeURIComponent(item.videoId)}`),
                 source: 'YouTube', publisher: plain(text(item.ownerText)) || 'YouTube',
+                durationSeconds, viewCount: exactViews ? Number(exactViews[1]) : null,
+                channelId: item.ownerText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId || '',
                 date: relativeIso(text(item.publishedTimeText)), dateLabel: '게시 (추정)', dateApproximate: true,
                 dateText: plain(text(item.publishedTimeText)).slice(0, 100), description: plain(text(item.descriptionSnippet)).slice(0, 1500),
                 metrics: [plain(text(item.viewCountText || item.shortViewCountText)).slice(0, 100)].filter(Boolean),

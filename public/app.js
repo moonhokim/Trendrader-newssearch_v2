@@ -9,6 +9,7 @@ let selectedGroup = 'all';
 let lastCollectedAt;
 let lastParams = '';
 const stateKey = 'trend-search-filters-v1';
+Object.assign(providerLabels, { communityHn: 'Hacker News', communityClien: '클리앙', communityRuliweb: '루리웹', communityFmkorea: '에펨코리아', communityPpomppu: '뽐뿌', communityDc: '디시인사이드', communityToday: '오늘의유머' });
 let controller;
 let trendController;
 let sequence = 0;
@@ -266,7 +267,7 @@ restoreState();
 });
 $('backToTop').addEventListener('click', () => {
     window.scrollTo({ top: 0, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-    $('trendHomeTitle').focus({ preventScroll: true });
+    (activeView === 'information' ? $('trendHomeTitle') : $(activeView === 'video' ? 'videoHeading' : 'communityHeading')).focus({ preventScroll: true });
 });
 $('mobileStatusLink').addEventListener('click', () => { $('collectionDetails').open = true; });
 $('exportBtn').addEventListener('click', exportCsv);
@@ -290,3 +291,55 @@ document.querySelector('#filterField').addEventListener('change', loadTrends);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && $('autoRefresh').checked) handleSearch(); });
 loadTrends();
 handleSearch();
+
+let activeView = 'information';
+function switchView(view) {
+    activeView = view;
+    for (const name of ['information', 'video', 'community']) $(name + 'View').hidden = name !== view;
+    document.querySelectorAll('.workspace-tab').forEach(button => {
+        const active = button.dataset.view === view;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+    document.querySelector('.bottom-nav').hidden = view !== 'information';
+    if (view === 'video' && !$('videoSearchFrame').getAttribute('src')) $('videoSearchFrame').src = $('videoSearchFrame').dataset.src;
+}
+document.querySelectorAll('.workspace-tab').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
+let communityController;
+let communitySequence = 0;
+$('communityForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    communityController?.abort();
+    communityController = new AbortController();
+    const request = ++communitySequence;
+    const requestController = communityController;
+    const timeout = setTimeout(() => requestController.abort(), 25000);
+    $('communityStatus').textContent = '커뮤니티를 검색하고 있습니다…';
+    $('communityResults').setAttribute('aria-busy', 'true');
+    const params = new URLSearchParams({ q: $('communityQuery').value.trim(), category: 'reddit', country: $('communityCountry').value, sort: $('communitySort').value, period: 'all' });
+    try {
+        const response = await fetch(`/api/search?${params}`, { signal: communityController.signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '커뮤니티 검색에 실패했습니다.');
+        if (request !== communitySequence) return;
+        const koreanProviders = new Set(['communityGeek', 'communityClien', 'communityRuliweb', 'communityFmkorea', 'communityPpomppu', 'communityDc', 'communityToday']);
+        const scope = $('communityScope').value;
+        const inScope = item => scope === 'all' || (scope === 'korea' ? koreanProviders.has(item.provider) : !koreanProviders.has(item.provider));
+        const items = (data.items || []).filter(item => sourceGroup(item) === 'community' && inScope(item));
+        $('communityResults').replaceChildren(...items.map(item => {
+            const card = node('article', 'trend-card glass');
+            card.append(node('p', 'card-time', `${item.source} · ${item.publisher} · ${dateText(item)}`), node('h2', 'card-title', item.title), node('p', 'card-summary-box', item.description || '원문에서 이야기를 확인하세요.'), node('p', 'metrics-group', (item.metrics || []).join(' · ') || '반응 수 미제공'), link(item));
+            return card;
+        }));
+        if (!items.length) $('communityResults').append(node('p', 'empty-state glass', '조건에 맞는 커뮤니티 결과가 없습니다. 검색어 또는 국가를 변경하세요.'));
+        const failed = (data.statuses || []).filter(status => inScope(status) && (!status.ok || status.stale));
+        $('communityStatus').textContent = `검색 결과 ${items.length}건${failed.length ? ` · 일부 출처 수집 제한: ${failed.map(status => providerLabels[status.provider] || status.provider).join(', ')}` : ''}`;
+    } catch (error) {
+        if (request !== communitySequence) return;
+        $('communityResults').replaceChildren();
+        $('communityStatus').textContent = error.name === 'AbortError' ? '검색 시간이 초과되었습니다. 다시 검색하세요.' : error.message;
+    } finally {
+        clearTimeout(timeout);
+        if (request === communitySequence) $('communityResults').setAttribute('aria-busy', 'false');
+    }
+});

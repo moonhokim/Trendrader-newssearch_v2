@@ -14,6 +14,8 @@ export function options(params) {
     const o = { q: (params.get('q') || '').trim(), category: params.get('category') || 'all', country: params.get('country') || 'KR', period: params.get('period') || '7d', sort: params.get('sort') || 'popular', field: (params.get('field') || '').trim() };
     if (o.q.length > 180 || o.field.length > 30 || !['all', 'news', 'github', 'blog', 'reddit', 'humor', 'youtube'].includes(o.category) || !Object.hasOwn(locales, o.country) || !(o.period === 'all' || Object.hasOwn(durations, o.period)) || !['popular', 'latest', 'relevance'].includes(o.sort)) throw new Error('검색 조건을 확인하세요. 검색어는 180자까지 입력할 수 있습니다.');
     o.language = regions[o.country].language;
+    o.videoDuration = params.get('videoDuration') || 'any';
+    if (!['any', 'short', 'medium', 'long'].includes(o.videoDuration)) throw new Error('영상 길이 조건을 확인하세요.');
     o.query = [o.q, localizedField(o.field, o.language)].filter(Boolean).join(' ');
     o.since = o.period === 'all' ? null : Date.now() - durations[o.period] * 86400000;
     return o;
@@ -78,21 +80,23 @@ async function youtube(o, fetcher) {
     if (process.env.YOUTUBE_API_KEY) {
         const url = new URL(`https://www.googleapis.com/youtube/v3/${o.query ? 'search' : 'videos'}`);
         url.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: o.query ? 'snippet' : 'snippet,statistics', maxResults: '30', regionCode: o.country,
-            ...(o.query ? { q: o.query, type: 'video', relevanceLanguage: o.language === 'zh' ? 'zh-Hans' : o.language, order: o.sort === 'latest' ? 'date' : o.sort === 'popular' ? 'viewCount' : 'relevance', ...(o.since ? { publishedAfter: new Date(o.since).toISOString() } : {}) } : { chart: 'mostPopular' }) }).toString();
+            ...(o.query ? { q: o.query, type: 'video', videoDuration:o.videoDuration || 'any', relevanceLanguage: o.language === 'zh' ? 'zh-Hans' : o.language, order: o.sort === 'latest' ? 'date' : o.sort === 'popular' ? 'viewCount' : 'relevance', ...(o.since ? { publishedAfter: new Date(o.since).toISOString() } : {}) } : { chart: 'mostPopular' }) }).toString();
         const data = await upstream(url, true, fetcher, o.country);
         if (!Array.isArray(data.items)) throw new Error('YouTube API 응답 형식 오류');
-        if (o.query && o.sort === 'popular' && data.items.length) {
+        if (o.query && (o.sort === 'popular' || o.videoDuration !== 'any') && data.items.length) {
             const statsUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
-            statsUrl.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: 'statistics', id: data.items.map(i => i.id?.videoId).filter(Boolean).join(',') }).toString();
+            statsUrl.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: o.videoDuration !== 'any' ? 'statistics,contentDetails' : 'statistics', id: data.items.map(i => i.id?.videoId).filter(Boolean).join(',') }).toString();
             try {
                 const stats = await upstream(statsUrl, true, fetcher, o.country);
-                const byId = new Map((stats.items || []).map(i => [i.id, i.statistics]));
-                data.items = data.items.map(i => ({ ...i, statistics: byId.get(i.id?.videoId) }));
+                const byId = new Map((stats.items || []).map(i => [i.id, i]));
+                data.items = data.items.map(i => ({ ...i, statistics: byId.get(i.id?.videoId)?.statistics, contentDetails:byId.get(i.id?.videoId)?.contentDetails }));
             } catch { /* Keep search results when the optional statistics call fails. */ }
         }
         return data.items.filter(i => (typeof i.id === 'string' ? i.id : i.id?.videoId) && i.snippet).map(i => ({
             title: plain(i.snippet.title), url: `https://www.youtube.com/watch?v=${encodeURIComponent(typeof i.id === 'string' ? i.id : i.id.videoId)}`,
             source: 'YouTube', publisher: plain(i.snippet.channelTitle), date: iso(i.snippet.publishedAt), dateLabel: '게시',
+            channelId:i.snippet.channelId || '', viewCount:i.statistics?.viewCount !== undefined ? Number(i.statistics.viewCount) : null,
+            durationSeconds: /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.test(i.contentDetails?.duration || '') ? (() => { const m=i.contentDetails.duration.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/); return Number(m[1] || 0)*3600+Number(m[2] || 0)*60+Number(m[3] || 0); })() : null,
             description: plain(i.snippet.description).slice(0, 1500), thumbnail: safeUrl(i.snippet.thumbnails?.medium?.url),
             metrics: i.statistics?.viewCount ? [`조회 ${i.statistics.viewCount}`] : [], language: i.snippet.defaultAudioLanguage || i.snippet.defaultLanguage || null
         }));
@@ -101,12 +105,13 @@ async function youtube(o, fetcher) {
     url.searchParams.set('search_query', o.query || regions[o.country].videoQuery);
     url.searchParams.set('hl', o.language);
     url.searchParams.set('gl', o.country);
-    if (o.sort === 'popular' || o.sort === 'latest') {
+    if (o.sort === 'popular' || o.sort === 'latest' || o.period !== 'all' || o.videoDuration !== 'any') {
         // YouTube public search filter: sort + video type + coarse upload window.
         // The exact selected period is still enforced after collection.
         const uploaded = o.period === '1d' ? 2 : ['3d', '7d'].includes(o.period) ? 3 : ['14d', '30d'].includes(o.period) ? 4 : o.period === 'all' ? null : 5;
-        const filters = [...(uploaded ? [8, uploaded] : []), 16, 1];
-        url.searchParams.set('sp', Buffer.from([8, o.sort === 'popular' ? 3 : 2, 18, filters.length, ...filters]).toString('base64'));
+        const duration = {short:1,long:2,medium:3}[o.videoDuration];
+        const filters = [...(uploaded ? [8, uploaded] : []), 16, 1, ...(duration ? [24,duration] : [])];
+        url.searchParams.set('sp', Buffer.from([...(o.sort === 'relevance' ? [] : [8, o.sort === 'popular' ? 3 : 2]), 18, filters.length, ...filters]).toString('base64'));
     }
     const response = await fetcher(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GlobalTrendSearch/1.0)', Accept: 'text/html', 'Accept-Language': regions[o.country].accept }, signal: AbortSignal.timeout(12000) });
     if (!response.ok) throw new Error(`YouTube 검색 응답 오류 (${response.status})`);
@@ -154,6 +159,13 @@ export async function search(o, fetcher = fetch) {
         blogMedium: (o, f) => siteBlog(o, f, 'Medium', 'medium.com'),
         blogWordPress: (o, f) => siteBlog(o, f, 'WordPress', 'wordpress.com'),
         reddit: collectReddit,
+        communityHn: community,
+        communityClien: (o, f) => siteBlog(o, f, '클리앙', 'clien.net'),
+        communityRuliweb: (o, f) => siteBlog(o, f, '루리웹', 'ruliweb.com'),
+        communityFmkorea: (o, f) => siteBlog(o, f, '에펨코리아', 'fmkorea.com'),
+        communityPpomppu: (o, f) => siteBlog(o, f, '뽐뿌', 'ppomppu.co.kr'),
+        communityDc: (o, f) => siteBlog(o, f, '디시인사이드', 'dcinside.com'),
+        communityToday: (o, f) => siteBlog(o, f, '오늘의유머', 'todayhumor.co.kr'),
         humorPpomppu: (o, f) => humor(o, url => upstream(url, false, f, o.country), '뽐뿌 유머/감동'),
         humorToday: (o, f) => siteBlog(o, f, '오늘의유머', 'todayhumor.co.kr'),
         humorDc: (o, f) => siteBlog(o, f, '디시인사이드', 'dcinside.com'),
@@ -165,7 +177,9 @@ export async function search(o, fetcher = fetch) {
     for (const [key, [name, domain]] of Object.entries(regionalBlogs)) providers[key] = (o, f) => siteBlog(o, f, name, domain);
     for (const key of Object.keys(extraFeeds)) providers[key] = (o, f) => collectExtraFeed(o, url => upstream(url, false, f, o.country), key);
     const base = o.category === 'blog' ? ['blogNaver', 'blogDaum', 'blogTistory', 'blogDev', 'blogYozm', 'blogMedium', 'blogWordPress', ...Object.keys(regionalBlogs)] : o.category === 'humor' ? ['humorPpomppu', 'humorToday', 'humorDc', 'humor9gag', 'humorBoredPanda'] : [o.category];
-    const selected = o.category === 'all' ? Object.keys(providers) : [...base, ...Object.keys(extraFeeds).filter(key => extraFeeds[key].category === o.category)];
+    const selected = o.category === 'all' ? Object.keys(providers) : o.category === 'reddit'
+        ? ['reddit', ...Object.keys(providers).filter(key => key.startsWith('community'))]
+        : [...base, ...Object.keys(extraFeeds).filter(key => extraFeeds[key].category === o.category)];
     const timing = {};
     const results = await Promise.allSettled(selected.map(async key => {
         const started = Date.now();
@@ -238,6 +252,10 @@ export function createServer(fetcher = fetch, config = {}) {
         try {
             if (req.method !== 'GET') return send(405, { error: 'GET 요청만 지원합니다.' });
             const url = new URL(req.url, 'http://localhost');
+            if (url.pathname === '/video-search.html') {
+                res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+                res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'");
+            }
             if (url.pathname === '/api/health') return send(200, { ok: true, uptimeSeconds: Math.floor(process.uptime()), pendingSearches: pending.size });
             if (url.pathname.startsWith('/api/')) {
                 const time = now();
@@ -260,10 +278,38 @@ export function createServer(fetcher = fetch, config = {}) {
                 if (field.length > 30) return send(400, { error: '분야 조건이 너무 깁니다.' });
                 return send(200, await liveTrends(country, field));
             }
+            if (url.pathname === '/api/video-platform') {
+                const platform = url.searchParams.get('platform');
+                const q = (url.searchParams.get('q') || '').trim();
+                const order = url.searchParams.get('order') || 'relevance';
+                const date = url.searchParams.get('date') || 'all';
+                const pages = Number(url.searchParams.get('pages') || 2);
+                if (!['dailymotion', 'peertube'].includes(platform) || !q || q.length > 180 || !['relevance', 'viewCount', 'date'].includes(order) || !['all', '24h', '7d', '30d', '1y'].includes(date) || ![1, 2, 3, 5].includes(pages)) return send(400, { error: '영상 검색 조건을 확인하세요.' });
+                const upstreamUrl = new URL(platform === 'dailymotion' ? 'https://api.dailymotion.com/videos' : 'https://sepiasearch.org/api/v1/search/videos');
+                const limit = Math.min(100, 20 * pages);
+                const since = date === 'all' ? null : new Date(now() - ({ '24h':1, '7d':7, '30d':30, '1y':365 }[date]) * 86400000);
+                upstreamUrl.search = new URLSearchParams(platform === 'dailymotion'
+                    ? { search:q, fields:'id,title,thumbnail_360_url,views_total,duration,created_time,url,owner.id,owner.screenname,owner.followers_total', sort:({relevance:'relevance',viewCount:'visited',date:'recent'}[order]), limit:String(limit), page:'1', ...(since ? {created_after:String(Math.floor(since.getTime()/1000))} : {}) }
+                    : { search:q, start:'0', count:String(limit), sort:({relevance:'-match',viewCount:'-views',date:'-publishedAt'}[order]), nsfw:'false', ...(since ? {startDate:since.toISOString()} : {}) }).toString();
+                const key = 'video:' + upstreamUrl.href;
+                const old = cache.get(key);
+                if (old && now() - old.time < old.ttl) return send(200, old.data);
+                if (!pending.has(key)) {
+                    if (pending.size >= 12) return send(429, {error:'요청이 많습니다. 잠시 후 다시 검색하세요.'});
+                    pending.set(key, upstream(upstreamUrl, true, fetcher).finally(() => pending.delete(key)));
+                }
+                try {
+                    const data = await pending.get(key);
+                    if (!Array.isArray(platform === 'dailymotion' ? data.list : data.data)) throw new Error('영상 플랫폼 응답 형식 오류');
+                    if (cache.size >= 100) cache.delete(cache.keys().next().value);
+                    cache.set(key, {time:now(), ttl:60000, data});
+                    return send(200, data);
+                } catch (error) { return send(502, {error:`${platform === 'dailymotion' ? 'Dailymotion' : 'PeerTube'} 연결 실패: ${error.message}`}); }
+            }
             if (url.pathname === '/api/search') {
                 let o;
                 try { o = options(url.searchParams); } catch (e) { return send(400, { error: e.message }); }
-                const key = JSON.stringify([o.q, o.field, o.category, o.country, o.period, o.sort, Boolean(process.env.YOUTUBE_API_KEY), Boolean(process.env.REDDIT_ACCESS_TOKEN)]);
+                const key = JSON.stringify([o.q, o.field, o.category, o.country, o.period, o.sort, o.videoDuration, Boolean(process.env.YOUTUBE_API_KEY), Boolean(process.env.REDDIT_ACCESS_TOKEN)]);
                 const old = cache.get(key);
                 const responseData = data => ({ ...data, trends: trends(o.q, url.searchParams.get('record') === '1') });
                 if (old && now() - old.time < old.ttl) return send(200, responseData({ ...old.data, cached: true }));
@@ -280,7 +326,7 @@ export function createServer(fetcher = fetch, config = {}) {
                 cache.set(key, { time: now(), data, ttl: data.statuses.every(s => s.ok) ? 60000 : 15000 });
                 return send(200, responseData(data));
             }
-            const files = { '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/brand/trend-radar-logo-en.png': ['brand/trend-radar-logo-en.png', 'image/png'], '/brand/trend-radar-banner-en.png': ['brand/trend-radar-banner-en.png', 'image/png'], '/reset.css': ['reset.css', 'text/css; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
+            const files = { '/theme.js': ['theme.js', 'text/javascript; charset=utf-8'], '/video-search.html': ['video-search.html', 'text/html; charset=utf-8'], '/video-search.js': ['video-search.js', 'text/javascript; charset=utf-8'], '/video-search.css': ['video-search.css', 'text/css; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/brand/trend-radar-logo-en.png': ['brand/trend-radar-logo-en.png', 'image/png'], '/brand/trend-radar-banner-en.png': ['brand/trend-radar-banner-en.png', 'image/png'], '/reset.css': ['reset.css', 'text/css; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
             if (!Object.hasOwn(files, url.pathname)) return send(404, { error: '페이지가 없습니다.' });
             const [name, type] = files[url.pathname];
             const body = await readFile(new URL(name, root));

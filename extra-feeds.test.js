@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import { extraFeeds, collectExtraFeed } from './feeds.js';
 import { options, search } from './server.js';
 
+test('community category includes Korean site searches and keeps individual provider statuses', async () => {
+    const domains = [];
+    const result = await search(options(new URLSearchParams({category:'reddit', q:'AI', period:'all'})), async url => {
+        const domain = url.searchParams.get('q')?.match(/site:([^ ]+)/)?.[1];
+        if (!domain) return new Response('', {status:503});
+        domains.push(domain);
+        return new Response(`<rss><channel><item><title>AI 이야기 ${domain}</title><link>https://${domain}/story</link></item></channel></rss>`);
+    });
+    assert.deepEqual(domains.sort(), ['clien.net', 'ruliweb.com', 'fmkorea.com', 'ppomppu.co.kr', 'dcinside.com', 'todayhumor.co.kr'].sort());
+    assert.equal(result.items.length, 6);
+    assert.ok(result.items.every(item => item.provider.startsWith('community')));
+    assert.ok(result.statuses.some(status => status.provider === 'reddit' && !status.ok));
+});
+
 test('direct publisher feeds filter query terms and retain source metadata without invented metrics', async () => {
     for (const [key, feed] of Object.entries(extraFeeds)) {
         const items = await collectExtraFeed({ query: 'AI research' }, async url => {

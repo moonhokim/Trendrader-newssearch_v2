@@ -16,6 +16,95 @@ function setup(fetcher, url = 'http://localhost:3000', savedState) {
 }
 const response = (extra = {}) => ({ ok: true, json: async () => ({ items: [item], statuses: [{ provider: 'humor', ok: true, count: 1 }], collectedAt: new Date().toISOString(), trends: [], ...extra }) });
 
+test('theme restores, persists, synchronizes video and survives unavailable storage', async t => {
+    const themeScript = await readFile(new URL('./public/theme.js', import.meta.url), 'utf8');
+    const dom = new JSDOM(html, { url:'http://localhost', runScripts:'outside-only' });
+    t.after(() => dom.window.close());
+    dom.window.localStorage.setItem('trend-radar-theme', 'light');
+    dom.window.eval(themeScript);
+    assert.equal(dom.window.document.documentElement.dataset.theme, 'light');
+    dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+    const select = dom.window.document.getElementById('themeSelect');
+    assert.equal(select.value, 'light');
+    select.value = 'dark';
+    select.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(dom.window.localStorage.getItem('trend-radar-theme'), 'dark');
+    assert.equal(dom.window.document.getElementById('videoSearchFrame').contentDocument.documentElement.dataset.theme, 'dark');
+    Object.defineProperty(dom.window, 'localStorage', { get() { throw new Error('Storage unavailable'); } });
+    select.value = 'light';
+    select.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(dom.window.document.documentElement.dataset.theme, 'light');
+});
+
+test('service navigation isolates video state and community searches use their own conditions', async t => {
+    const requests = [];
+    const dom = setup(async url => { requests.push(new URL(url, 'http://localhost')); return response(); });
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    doc.querySelector('[data-view="video"]').click();
+    assert.equal(doc.querySelector('#informationView').hidden, true);
+    assert.equal(doc.querySelector('#videoView').hidden, false);
+    assert.equal(doc.querySelector('#videoSearchFrame').getAttribute('src'), '/video-search.html');
+    doc.querySelector('[data-view="community"]').click();
+    doc.querySelector('#communityQuery').value = 'AI';
+    doc.querySelector('#communityCountry').value = 'US';
+    doc.querySelector('#communitySort').value = 'latest';
+    doc.querySelector('#communitySearchBtn').click();
+    await flush();
+    assert.equal(requests.at(-1).searchParams.get('category'), 'reddit');
+    assert.equal(requests.at(-1).searchParams.get('country'), 'US');
+    assert.equal(requests.at(-1).searchParams.get('sort'), 'latest');
+    assert.equal(doc.querySelectorAll('#communityResults article').length, 1);
+    doc.querySelector('[data-view="information"]').click();
+    assert.equal(doc.querySelector('#informationView').hidden, false);
+    assert.equal(doc.querySelector('#communityView').hidden, true);
+});
+
+test('imported video search preserves filters, subscriber enrichment, sorting and copy actions', async t => {
+    const videoHtml = await readFile(new URL('./public/video-search.html', import.meta.url), 'utf8');
+    const videoScript = await readFile(new URL('./public/video-search.js', import.meta.url), 'utf8');
+    const dom = new JSDOM(videoHtml, { url: 'http://localhost/video-search.html', runScripts: 'outside-only' });
+    t.after(() => dom.window.close());
+    const requests = [];
+    dom.window.fetch = async url => {
+        requests.push(url);
+        return { ok: true, text: async () => JSON.stringify(url.includes('/channels/') ? { subCount: 100 } : [
+            { type: 'video', videoId: 'abcdefghijk', title: '<img onerror=alert(1)>', author: 'Channel', authorId: 'channel1', viewCount: 10000, lengthSeconds: 300, published: Math.floor(Date.now() / 1000) }
+        ]) };
+    };
+    dom.window.eval(videoScript);
+    const doc = dom.window.document;
+    doc.querySelector('#keyword').value = 'AI';
+    doc.querySelector('#apiPlatform').value = 'youtube';
+    doc.querySelector('#apiPages').value = '1';
+    doc.querySelector('#apiDate').value = '7d';
+    doc.querySelector('#apiDuration').value = 'medium';
+    await dom.window.fetchData();
+    assert.ok(requests.some(url => url.includes('date=week') && url.includes('duration=medium')));
+    assert.ok(requests.some(url => url.includes('/channels/channel1')));
+    assert.equal(doc.querySelectorAll('.video-card').length, 1);
+    assert.equal(doc.querySelector('.card-title').textContent, '<img onerror=alert(1)>');
+    assert.equal(doc.querySelector('.card-title img'), null);
+    assert.match(doc.querySelector('.stats-grid').textContent, /10,000%/);
+    doc.querySelector('[data-sort="viralScore"]').click();
+    assert.equal(doc.querySelector('[data-sort="viralScore"]').classList.contains('active'), true);
+    assert.ok(doc.querySelector('.copy-btn'));
+    assert.ok(doc.querySelector('.ai-btn'));
+    doc.querySelector('[data-tab="keyword"]').click();
+    assert.equal(doc.querySelector('#tab-keyword').classList.contains('active'), true);
+    assert.ok(doc.querySelector('#kwRunBtn'));
+    assert.equal(dom.window.matchFormat({sec:180}, 'short'), true);
+    assert.equal(dom.window.matchFormat({sec:181}, 'short'), false);
+    assert.equal(dom.window.safeMediaUrl('javascript:alert(1)'), '');
+    dom.window.searchDailymotion = async () => ({items:[{id:'dm1',platform:'dailymotion',sec:60}], backend:{base:'api.dailymotion.com'}});
+    dom.window.searchPeerTube = async () => { throw new Error('Unavailable'); };
+    const mixed = await dom.window.searchPlatforms('AI', {platform:'other'});
+    assert.equal(mixed.items.length, 1);
+    assert.equal(mixed.items[0].platform, 'dailymotion');
+    assert.equal(mixed.status[1].ok, false);
+});
+
 test('frontend renders real text, new tabs, detail and safe original link; records only manual searches', async t => {
     const requests = [];
     const dom = setup(async url => { requests.push(new URL(url, 'http://localhost')); return response({ trends: [{ query: '검색 테스트', count: 2 }] }); });
