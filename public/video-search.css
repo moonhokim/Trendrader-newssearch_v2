@@ -104,3 +104,14 @@ body { min-height:0; }
     .settings-actions button { width:100%; }
     .action-row button { flex:1; }
 }
+/* Embedded video controls are provided by the shared search panel. */
+.embedded-search .filter-panel { display:none; }
+/* Match the shared editorial workspace. */
+:root { --bg:#0b111b; --card:#141e2d; --panel:#1a2739; --border:#2b384b; --text:#edf2fa; --sub:#a9b6c9; --blue:#79a9f5; --green:#77cbbb; }
+body { font-size:14px; line-height:1.6; }
+.container { padding:16px; }
+.sort-btn { border-radius:7px; min-height:38px; padding:8px 12px; }
+.video-card { border-radius:10px; box-shadow:none; }
+.card-title { font-size:16px; line-height:1.6; }
+.fl { font-size:12px; letter-spacing:0; }
+.embedded-search .settings { margin-bottom:16px; }

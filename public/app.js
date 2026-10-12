@@ -84,7 +84,7 @@ function renderTrendCards(trends) {
         const card = node('button', 'trend-home-card', '');
         card.type = 'button';
         card.append(node('span', 'trend-rank', `0${index + 1}`), node('strong', 'trend-query', item.query), node('span', 'trend-signal', `${item.count || '검색량 미제공'} · ${item.countLabel || 'Google Trends'}`));
-        card.addEventListener('click', () => { $('searchInput').value = item.query; $('searchInput').focus(); handleSearch(true); });
+        card.addEventListener('click', () => selectTrend(item.query));
         target.append(card);
     });
 }
@@ -93,11 +93,18 @@ function renderTrends(trends = [], metadata = {}) {
     ticker.replaceChildren();
     trends.forEach((item, index) => {
         const button = node('button', 'ticker-item', `${index + 1}. ${item.query} (${item.count})`);
-        button.addEventListener('click', () => { $('searchInput').value = item.query; handleSearch(true); });
+        button.addEventListener('click', () => selectTrend(item.query));
         ticker.append(button);
     });
     if (!trends.length) ticker.append(node('span', 'ticker-item', '표시할 인기검색어가 없습니다'));
     renderTrendCards(trends);
+    $('exploreTrends').replaceChildren(...trends.slice(0, 6).map((item, index) => {
+        const button = node('button', 'trend-home-card');
+        button.type = 'button';
+        button.append(node('span', 'trend-rank', String(index + 1).padStart(2, '0')), node('strong', 'trend-query', item.query));
+        button.addEventListener('click', () => { switchView('information'); selectTrend(item.query); });
+        return button;
+    }));
     $('trendUpdatedAt').textContent = metadata.collectedAt ? `기준 ${new Date(metadata.collectedAt).toLocaleString('ko-KR')}` : '기준 시각 미제공';
 }
 async function loadTrends() {
@@ -266,10 +273,20 @@ restoreState();
     $('categoryContainer').append(chip);
 });
 $('backToTop').addEventListener('click', () => {
+    $('resultViewport').scrollTo?.({ top: 0, behavior: 'smooth' });
     window.scrollTo({ top: 0, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-    (activeView === 'information' ? $('trendHomeTitle') : $(activeView === 'video' ? 'videoHeading' : 'communityHeading')).focus({ preventScroll: true });
+    (!$('exploreView').hidden ? $('exploreHeading') : !$('statusView').hidden ? $('statusHeading') : activeView === 'information' ? $('trendHomeTitle') : $(activeView === 'video' ? 'videoHeading' : 'communityHeading')).focus({ preventScroll: true });
 });
-$('mobileStatusLink').addEventListener('click', () => { $('collectionDetails').open = true; });
+$('mobileStatusLink').addEventListener('click', event => {
+    event.preventDefault();
+    $('collectionDetails').open = true;
+    showUtilityView('status');
+});
+document.querySelector('.bottom-nav a[href="#categoryContainer"]').addEventListener('click', event => {
+    event.preventDefault();
+    showUtilityView('explore');
+});
+document.querySelector('.bottom-nav a[href="#trendHomeTitle"]').addEventListener('click', () => switchView('information'));
 $('exportBtn').addEventListener('click', exportCsv);
 $('sourceGroupTabs').addEventListener('click', event => {
     const tab = event.target.closest('.source-group-tab');
@@ -293,15 +310,173 @@ loadTrends();
 handleSearch();
 
 let activeView = 'information';
+const searchControls = {
+    information: document.querySelector('#informationView > .search-section'),
+    community: document.querySelector('#communityView > .search-section'),
+    video: node('section', 'search-section glass video-options')
+};
+const videoFilterDefinitions = [
+    ['apiPlatform', '플랫폼', [['all', '전체 플랫폼'], ['youtube', 'YouTube'], ['other', 'Dailymotion · PeerTube']], 'all'],
+    ['apiFormat', '영상 형식', [['all', '전체'], ['short', '숏폼 (3분 이하)'], ['long', '롱폼 (3분 초과)']], 'all'],
+    ['apiDate', '업로드 기간', [['all', '전체'], ['24h', '최근 24시간'], ['7d', '최근 1주'], ['30d', '최근 1개월'], ['1y', '최근 1년']], 'all'],
+    ['apiDuration', '영상 길이', [['any', '전체'], ['short', '4분 미만'], ['medium', '4~20분'], ['long', '20분 초과']], 'any'],
+    ['apiOrder', '정렬 기준', [['relevance', '관련도순'], ['viewCount', '조회수순'], ['date', '최신순']], 'relevance'],
+    ['apiPages', '수집 범위', [['1', '약 20개'], ['2', '약 40개'], ['3', '약 60개'], ['5', '약 100개']], '2'],
+    ['apiSubs', '채널 구독자 정보', [['1', '조회 (인사이트 계산)'], ['0', '조회 안 함 (빠른 검색)']], '1']
+];
+searchControls.video.append(node('h2', '', '영상 검색 조건'));
+for (const [id, title, options, defaultValue] of videoFilterDefinitions) {
+    const field = node('div', 'filter-group');
+    const label = node('label', 'filter-label', title);
+    const select = node('select', 'filter-select');
+    select.id = `shared-${id}`;
+    label.htmlFor = select.id;
+    for (const [value, text] of options) { const option = node('option', '', text); option.value = value; select.append(option); }
+    select.value = defaultValue;
+    select.addEventListener('change', () => {
+        const original = $('videoSearchFrame').contentDocument?.getElementById(id);
+        if (original) original.value = select.value;
+    });
+    field.append(label, select);
+    searchControls.video.append(field);
+}
+const mobileLayout = window.matchMedia?.('(max-width: 768px)');
+function placeSearchControls() {
+    const target = $(mobileLayout?.matches ? 'mobileSearchControls' : 'desktopSearchControls');
+    for (const [view, controls] of Object.entries(searchControls)) {
+        controls.hidden = view !== activeView;
+        target.append(controls);
+    }
+}
+function mountVideoOptions(frame) {
+    const filters = frame.contentDocument?.querySelector('.native-filters');
+    if (!filters) return;
+    frame.contentDocument.documentElement.classList.add('embedded-search');
+    filters.querySelectorAll('select').forEach(original => {
+        const select = $(`shared-${original.id}`);
+        if (!select) return;
+        original.value = select.value;
+        original.addEventListener('change', () => { select.value = original.value; });
+    });
+}
+placeSearchControls();
+let bottomDestination = 'home';
+function setBottomNav(destination) {
+    bottomDestination = destination;
+    const destinations = ['home', 'explore', 'search', 'status'];
+    document.querySelectorAll('.bottom-nav-item').forEach((button, index) => {
+        const active = destinations[index] === destination;
+        button.classList.toggle('active', active);
+        if (active) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+    });
+}
+function refreshStatusView() {
+    $('statusOverview').replaceChildren(...[
+        ['정보검색', $('searchStatus').textContent],
+        ['영상검색', $('videoSearchFrame').contentDocument?.getElementById('backendBadge')?.textContent?.replace(/^백엔드:\s*-$/, '검색 대기 중') || '아직 영상 검색을 실행하지 않았습니다.'],
+        ['커뮤니티', $('communityStatus').textContent]
+    ].map(([title, status]) => {
+        const card = node('article', 'status-summary glass');
+        card.append(node('h2', '', title), node('p', 'source-note', status));
+        return card;
+    }));
+    $('statusSources').replaceChildren(...Array.from($('sourceStatuses').children, child => child.cloneNode(true)));
+    if (!$('statusSources').children.length) $('statusSources').append(node('p', 'source-note', '정보검색을 실행하면 출처별 수집 상태가 표시됩니다.'));
+}
+function showUtilityView(destination) {
+    if ($('mobileSearchDialog').open) $('mobileSearchDialog').close();
+    for (const view of ['information', 'video', 'community']) $(view + 'View').hidden = true;
+    $('exploreView').hidden = destination !== 'explore';
+    $('statusView').hidden = destination !== 'status';
+    setBottomNav(destination);
+    if (destination === 'status') refreshStatusView();
+    $('resultViewport').scrollTo?.({ top: 0 });
+    $(destination + 'Heading').focus({ preventScroll: true });
+    window.scrollTo({ top: document.querySelector('.workspace-toolbar').offsetTop, behavior: 'smooth' });
+}
+for (const [value, title] of [['all', '전체 정보'], ...Object.entries(labels)]) {
+    const button = node('button', 'explore-category', title);
+    button.type = 'button';
+    button.addEventListener('click', () => {
+        switchView('information');
+        document.querySelector(`#categoryContainer [data-category="${value}"]`).click();
+        $('resultViewport').scrollTo?.({ top: 0 });
+    });
+    $('exploreCategories').append(button);
+}
+const statusObserver = new MutationObserver(() => { if (!$('statusView').hidden) refreshStatusView(); });
+for (const id of ['searchStatus', 'communityStatus', 'sourceStatuses']) statusObserver.observe($(id), { childList: true, subtree: true, characterData: true });
+$('mobileSearchDialog').addEventListener('close', () => {
+    if (bottomDestination === 'search') setBottomNav(!$('exploreView').hidden ? 'explore' : !$('statusView').hidden ? 'status' : 'home');
+});
+function syncQuery(value) {
+    for (const id of ['searchInput', 'communityQuery', 'sharedQuery', 'mobileQuery']) $(id).value = value;
+    const keyword = $('videoSearchFrame').contentDocument?.getElementById('keyword');
+    if (keyword) keyword.value = value;
+}
+function submitActiveSearch() {
+    switchView(activeView);
+    if (activeView === 'information') handleSearch(true);
+    else if (activeView === 'community') $('communityForm').requestSubmit();
+    else {
+        const button = $('videoSearchFrame').contentDocument?.getElementById('searchBtn');
+        if (button) button.click();
+        else {
+            $('videoSearchFrame').addEventListener('load', () => {
+                syncQuery($('sharedQuery').value);
+                $('videoSearchFrame').contentDocument?.getElementById('searchBtn')?.click();
+            }, { once: true });
+        }
+    }
+}
+function selectTrend(query) {
+    syncQuery(query);
+    submitActiveSearch();
+    if (window.matchMedia?.('(max-width: 768px)').matches) $('mobileSearchDialog').showModal();
+    else $('sharedQuery').focus({ preventScroll: true });
+}
+for (const id of ['searchInput', 'communityQuery', 'sharedQuery', 'mobileQuery']) {
+    $(id).addEventListener('input', event => syncQuery(event.target.value));
+}
+syncQuery($('searchInput').value);
+for (const id of ['desktopSearchForm', 'mobileSearchForm']) {
+    $(id).addEventListener('submit', event => {
+        event.preventDefault();
+        syncQuery($(id === 'mobileSearchForm' ? 'mobileQuery' : 'sharedQuery').value);
+        submitActiveSearch();
+        if ($('mobileSearchDialog').open) $('mobileSearchDialog').close();
+    });
+}
+$('openMobileSearch').addEventListener('click', () => {
+    setBottomNav('search');
+    $('mobileSearchDialog').showModal();
+    $('mobileQuery').focus();
+});
+$('closeMobileSearch').addEventListener('click', () => $('mobileSearchDialog').close());
+$('mobileSearchDialog').addEventListener('click', event => {
+    if (event.target !== $('mobileSearchDialog')) return;
+    const rect = event.target.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) event.target.close();
+});
+window.matchMedia?.('(max-width: 768px)').addEventListener('change', event => {
+    if (!event.matches && $('mobileSearchDialog').open) $('mobileSearchDialog').close();
+    placeSearchControls();
+});
 function switchView(view) {
+    $('exploreView').hidden = true;
+    $('statusView').hidden = true;
+    setBottomNav('home');
     activeView = view;
+    placeSearchControls();
     for (const name of ['information', 'video', 'community']) $(name + 'View').hidden = name !== view;
     document.querySelectorAll('.workspace-tab').forEach(button => {
         const active = button.dataset.view === view;
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', String(active));
     });
-    document.querySelector('.bottom-nav').hidden = view !== 'information';
+    document.querySelector('.bottom-nav').hidden = false;
+    $('mobileSearchTitle').textContent = `${{ information: '정보', video: '영상', community: '커뮤니티' }[view]} 검색`;
     if (view === 'video' && !$('videoSearchFrame').getAttribute('src')) $('videoSearchFrame').src = $('videoSearchFrame').dataset.src;
 }
 document.querySelectorAll('.workspace-tab').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
@@ -311,6 +486,14 @@ $('videoSearchFrame').addEventListener('load', () => {
     const frame = $('videoSearchFrame');
     const body = frame.contentDocument?.body;
     if (!body) return;
+    mountVideoOptions(frame);
+    const badge = frame.contentDocument.getElementById('backendBadge');
+    if (badge) statusObserver.observe(badge, { childList: true, subtree: true, characterData: true });
+    const keyword = frame.contentDocument.getElementById('keyword');
+    if (keyword) {
+        keyword.value = $('sharedQuery').value;
+        keyword.addEventListener('input', () => syncQuery(keyword.value));
+    }
     const fitHeight = () => { frame.style.height = `${Math.max(500, Math.ceil(body.scrollHeight))}px`; };
     fitHeight();
     if (window.ResizeObserver) {

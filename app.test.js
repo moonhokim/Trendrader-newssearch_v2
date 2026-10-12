@@ -7,9 +7,13 @@ const html = await readFile(new URL('./public/index.html', import.meta.url), 'ut
 const script = await readFile(new URL('./public/app.js', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const item = { title: '실제 기사 제목', source: '뽐뿌 유머/감동', publisher: '작성자', date: new Date().toISOString(), dateLabel: '게시', description: '정상적인 기사 설명', metrics: [], url: 'https://example.com/article?id=1&no=2' };
-function setup(fetcher, url = 'http://localhost:3000', savedState) {
+function setup(fetcher, url = 'http://localhost:3000', savedState, media) {
     const dom = new JSDOM(html, { url, runScripts: 'outside-only' });
     dom.window.fetch = fetcher;
+    if (media) dom.window.matchMedia = () => media;
+    const dialog = dom.window.document.getElementById('mobileSearchDialog');
+    dialog.showModal = () => { dialog.open = true; };
+    dialog.close = () => { dialog.open = false; };
     if (savedState) dom.window.localStorage.setItem('trend-search-filters-v1', JSON.stringify(savedState));
     dom.window.eval(script);
     return dom;
@@ -318,4 +322,120 @@ test('blog and community feeds have separate result tabs and compact status', as
     doc.querySelector('[data-group="blog"]').click();
     assert.equal(doc.querySelector('.card-title').textContent, 'Blog post');
     assert.doesNotMatch(doc.querySelector('#searchStatus').textContent, /건 조회/);
+});
+
+test('shared search synchronizes services, trends and the mobile search dialog', async t => {
+    const requests = [];
+    const dom = setup(async url => { requests.push(new URL(url, 'http://localhost')); return response({ trends: [{ query: '인기 주제', count: 12 }] }); });
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    const dialog = doc.getElementById('mobileSearchDialog');
+    dialog.showModal = () => { dialog.open = true; };
+    dialog.close = () => { dialog.open = false; };
+    const shared = doc.getElementById('sharedQuery');
+    shared.value = '연동 검색';
+    shared.dispatchEvent(new dom.window.Event('input'));
+    assert.equal(doc.getElementById('searchInput').value, '연동 검색');
+    assert.equal(doc.getElementById('communityQuery').value, '연동 검색');
+    doc.querySelector('[data-view="community"]').click();
+    assert.equal(doc.querySelector('.bottom-nav').hidden, false);
+    doc.getElementById('openMobileSearch').click();
+    assert.equal(dialog.open, true);
+    assert.equal(doc.getElementById('mobileQuery').value, '연동 검색');
+    doc.getElementById('mobileSearchForm').dispatchEvent(new dom.window.Event('submit', { cancelable: true }));
+    await flush();
+    assert.equal(dialog.open, false);
+    assert.equal(requests.at(-1).searchParams.get('category'), 'reddit');
+    assert.equal(requests.at(-1).searchParams.get('q'), '연동 검색');
+    doc.querySelector('.ticker-item').click();
+    assert.equal(shared.value, '인기 주제');
+    assert.equal(doc.getElementById('communityQuery').value, '인기 주제');
+    await flush();
+    // The video iframe initializes with the most recent shared query.
+    const frame = doc.getElementById('videoSearchFrame');
+    frame.contentDocument.body.innerHTML = '<input id="keyword">';
+    frame.dispatchEvent(new dom.window.Event('load'));
+    const keyword = frame.contentDocument.getElementById('keyword');
+    assert.equal(keyword.value, '인기 주제');
+    keyword.value = '영상 입력';
+    keyword.dispatchEvent(new dom.window.Event('input'));
+    assert.equal(shared.value, '영상 입력');
+    assert.equal(doc.getElementById('searchInput').value, '영상 입력');
+});
+
+test('search conditions move between desktop panel and mobile dialog without losing state', async t => {
+    let onResize;
+    const media = { matches: false, addEventListener: (_type, callback) => { onResize = callback; } };
+    const dom = setup(async () => response(), 'http://localhost:3000', undefined, media);
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    assert.ok(doc.getElementById('desktopSearchControls').contains(doc.getElementById('filterCountry')));
+    doc.getElementById('filterCountry').value = 'JP';
+    doc.querySelector('[data-view="community"]').click();
+    assert.equal(doc.getElementById('communityForm').closest('.search-section').hidden, false);
+    assert.equal(doc.getElementById('filterCountry').closest('.search-section').hidden, true);
+    media.matches = true;
+    onResize(media);
+    assert.ok(doc.getElementById('mobileSearchControls').contains(doc.getElementById('communityScope')));
+    doc.querySelector('[data-view="information"]').click();
+    assert.ok(doc.getElementById('mobileSearchControls').contains(doc.getElementById('filterCountry')));
+    assert.equal(doc.getElementById('filterCountry').value, 'JP');
+    const frame = doc.getElementById('videoSearchFrame');
+    doc.querySelector('[data-view="video"]').click();
+    frame.contentDocument.open();
+    frame.contentDocument.write('<body><div class="native-filters"><div class="fg"><span class="fl">플랫폼</span><select id="apiPlatform"><option value="all">전체</option><option value="youtube">YouTube</option></select></div></div></body>');
+    frame.contentDocument.close();
+    frame.dispatchEvent(new dom.window.Event('load'));
+    doc.querySelector('[data-view="video"]').click();
+    const select = doc.getElementById('shared-apiPlatform');
+    assert.ok(doc.getElementById('mobileSearchControls').contains(select));
+    select.value = 'youtube';
+    select.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(frame.contentDocument.getElementById('apiPlatform').value, 'youtube');
+    media.matches = false;
+    onResize(media);
+    assert.ok(doc.getElementById('desktopSearchControls').contains(select));
+    assert.equal(select.value, 'youtube');
+});
+
+test('video conditions exist before iframe load and match the video search options', async t => {
+    const dom = setup(async () => response());
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    assert.equal(doc.querySelectorAll('.video-options select').length, 7);
+    const original = new JSDOM(await readFile(new URL('./public/video-search.html', import.meta.url), 'utf8'));
+    t.after(() => original.window.close());
+    for (const select of doc.querySelectorAll('.video-options select')) {
+        const native = original.window.document.getElementById(select.id.replace('shared-', ''));
+        assert.deepEqual(Array.from(select.options, option => option.value), Array.from(native.options, option => option.value));
+        assert.equal(select.value, native.value);
+    }
+});
+
+test('mobile destinations open separate exploration, search and status surfaces', async t => {
+    const dom = setup(async () => response(), 'http://localhost:3000', undefined, { matches:true, addEventListener() {} });
+    t.after(() => dom.window.close());
+    dom.window.scrollTo = () => {};
+    await flush();
+    const doc = dom.window.document;
+    doc.querySelector('.bottom-nav a[href="#categoryContainer"]').click();
+    assert.equal(doc.getElementById('exploreView').hidden, false);
+    assert.equal(doc.getElementById('mobileSearchDialog').open, false);
+    assert.equal(doc.querySelectorAll('.explore-category').length, 7);
+    doc.getElementById('mobileStatusLink').click();
+    assert.equal(doc.getElementById('exploreView').hidden, true);
+    assert.equal(doc.getElementById('statusView').hidden, false);
+    assert.equal(doc.getElementById('mobileSearchDialog').open, false);
+    assert.equal(doc.querySelectorAll('.status-summary').length, 3);
+    doc.getElementById('openMobileSearch').click();
+    assert.equal(doc.getElementById('mobileSearchDialog').open, true);
+    assert.ok(doc.getElementById('mobileSearchControls').contains(doc.getElementById('filterPeriod')));
+    doc.getElementById('mobileSearchForm').dispatchEvent(new dom.window.Event('submit', {cancelable:true}));
+    await flush();
+    assert.equal(doc.getElementById('informationView').hidden, false);
+    assert.equal(doc.getElementById('statusView').hidden, true);
+    assert.equal(doc.getElementById('mobileSearchDialog').open, false);
 });

@@ -23,6 +23,7 @@
 <body>
 
     <!-- Header -->
+    <div class="sticky-header">
     <header class="glass">
         <div class="brand">
             <a class="brand-link" href="/" aria-label="TREND RADAR 홈"><img class="brand-image" src="/brand/trend-radar-logo-en.png" alt="TREND RADAR" width="2172" height="724"></a>
@@ -44,11 +45,43 @@
         </div>
     </header>
 
+    </div>
+    <div class="app-layout">
+    <div class="workspace-toolbar">
     <nav class="workspace-nav" aria-label="주요 서비스">
         <button type="button" class="workspace-tab active" data-view="information" aria-controls="informationView" aria-pressed="true">정보검색</button>
         <button type="button" class="workspace-tab" data-view="video" aria-controls="videoView" aria-pressed="false">영상검색</button>
         <button type="button" class="workspace-tab" data-view="community" aria-controls="communityView" aria-pressed="false">커뮤니티</button>
     </nav>
+    </div>
+    <aside id="searchSidebar" aria-label="검색 및 검색 조건">
+        <form id="desktopSearchForm" class="shared-search">
+            <input id="sharedQuery" class="search-input" aria-label="공통 검색어" maxlength="180" placeholder="관심 있는 키워드 검색">
+            <button class="btn-search" type="submit">검색</button>
+        </form>
+        <div id="desktopSearchControls"></div>
+    </aside>
+    <dialog id="mobileSearchDialog" aria-labelledby="mobileSearchTitle">
+        <div class="mobile-search-heading"><h2 id="mobileSearchTitle">검색</h2><button id="closeMobileSearch" type="button" aria-label="검색창 닫기">닫기</button></div>
+        <form id="mobileSearchForm" class="shared-search">
+            <input id="mobileQuery" class="search-input" aria-label="검색어" maxlength="180" placeholder="관심 있는 키워드 검색">
+            <button class="btn-search" type="submit">검색</button>
+        </form>
+        <div id="mobileSearchControls"></div>
+    </dialog>
+    <div id="resultViewport" tabindex="-1" aria-label="검색 결과 화면">
+    <section id="exploreView" class="workspace-view utility-view" hidden aria-labelledby="exploreHeading">
+        <p class="eyebrow">DISCOVER</p><h1 id="exploreHeading" tabindex="-1">주제 탐색</h1>
+        <p class="section-description">관심 분야를 선택해 정보를 탐색하거나, 인기 주제로 검색을 시작하세요.</p>
+        <div id="exploreCategories" class="explore-categories"></div>
+        <h2>지금 관심받는 주제</h2><div id="exploreTrends" class="trend-cards"></div>
+    </section>
+    <section id="statusView" class="workspace-view utility-view" hidden aria-labelledby="statusHeading">
+        <p class="eyebrow">SOURCE STATUS</p><h1 id="statusHeading" tabindex="-1">수집 상태</h1>
+        <p class="section-description">검색 진행 상황과 출처별 연결 결과를 확인하세요. 표시되는 상태는 마지막 요청 기준입니다.</p>
+        <div id="statusOverview" class="status-overview" aria-live="polite"></div>
+        <h2>정보검색 출처</h2><div id="statusSources" class="source-statuses" aria-live="polite"></div>
+    </section>
     <!-- Main Container -->
     <main class="main-container" id="informationView">
 
@@ -167,19 +200,21 @@
         <div id="communityResults" class="feed-list" aria-live="polite"></div>
     </section>
 
-    <nav class="bottom-nav" aria-label="주요 메뉴">
-        <a href="#trendHomeTitle" class="bottom-nav-item active"><span>홈</span></a>
-        <a href="#categoryContainer" class="bottom-nav-item"><span>탐색</span></a>
-        <a href="#searchInput" class="bottom-nav-item"><span>검색</span></a>
-        <a href="#collectionDetails" id="mobileStatusLink" class="bottom-nav-item"><span>상태</span></a>
-    </nav>
-
-    <button type="button" id="backToTop" class="back-to-top" aria-label="페이지 맨 위로 이동">↑ 맨 위로</button>
-
     <footer class="site-footer">
         <p>© 2026 TREND RADAR</p>
         <p class="footer-note">출처가 제공한 설명과 공개 데이터 · 원문 전체는 원문 보기에서 확인 · 수집 범위와 오류는 검색 상태에 표시</p>
     </footer>
+    </div>
+    </div>
+
+    <nav class="bottom-nav" aria-label="주요 메뉴">
+        <a href="#trendHomeTitle" class="bottom-nav-item active"><span>홈</span></a>
+        <a href="#categoryContainer" class="bottom-nav-item"><span>탐색</span></a>
+        <button type="button" id="openMobileSearch" class="bottom-nav-item" aria-haspopup="dialog" aria-controls="mobileSearchDialog"><span>검색</span></button>
+        <a href="#collectionDetails" id="mobileStatusLink" class="bottom-nav-item"><span>상태</span></a>
+    </nav>
+
+    <button type="button" id="backToTop" class="back-to-top" aria-label="페이지 맨 위로 이동">↑ 맨 위로</button>
 
     <script src="app.js" defer></script>
 </body>
