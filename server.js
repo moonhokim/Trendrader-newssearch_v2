@@ -13,8 +13,10 @@ const durations = { '1d': 1, '3d': 3, '7d': 7, '14d': 14, '30d': 30, '90d': 90, 
 export function options(params) {
     const o = { q: (params.get('q') || '').trim(), category: params.get('category') || 'all', country: params.get('country') || 'KR', period: params.get('period') || '7d', sort: params.get('sort') || 'popular', field: (params.get('field') || '').trim() };
     if (o.q.length > 180 || o.field.length > 30 || !['all', 'news', 'github', 'blog', 'reddit', 'humor', 'youtube'].includes(o.category) || !Object.hasOwn(locales, o.country) || !(o.period === 'all' || Object.hasOwn(durations, o.period)) || !['popular', 'latest', 'relevance'].includes(o.sort)) throw new Error('검색 조건을 확인하세요. 검색어는 180자까지 입력할 수 있습니다.');
-    o.koreanBrowse = !o.q && ['youtube', 'reddit'].includes(o.category);
+    o.koreanBrowse = !o.q && o.category === 'youtube';
     if (o.koreanBrowse) { o.country = 'KR'; o.sort = 'latest'; }
+    o.languageBrowse = !o.q && o.category === 'reddit';
+    if (o.languageBrowse) o.sort = 'latest';
     o.language = regions[o.country].language;
     o.videoDuration = params.get('videoDuration') || 'any';
     if (!['any', 'short', 'medium', 'long'].includes(o.videoDuration)) throw new Error('영상 길이 조건을 확인하세요.');

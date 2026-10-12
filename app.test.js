@@ -518,7 +518,7 @@ test('video collects without a keyword and displays newest videos first', async 
     assert.equal(requests.at(-1).searchParams.get('q'), '반도체 AI');
 });
 
-test('blank community searches use Korean latest even when saved conditions differ', async t => {
+test('blank community searches preserve saved country and immediately search when country changes', async t => {
     const requests = [];
     const dom = setup(async url => {requests.push(new URL(url, 'http://localhost'));return response();}, 'http://localhost:3000', undefined, undefined, {'trend-community-filters-v1':{communityCountry:'US',communitySort:'popular'}});
     t.after(() => dom.window.close());
@@ -527,8 +527,17 @@ test('blank community searches use Korean latest even when saved conditions diff
     await flush();
     const request = requests.filter(url => url.pathname === '/api/search').at(-1);
     assert.equal(request.searchParams.get('q'), '');
-    assert.equal(request.searchParams.get('country'), 'KR');
+    assert.equal(request.searchParams.get('country'), 'US');
     assert.equal(request.searchParams.get('sort'), 'latest');
+    const country = dom.window.document.getElementById('communityCountry');
+    for (const value of ['JP', 'CN', 'GB', 'KR']) {
+        country.value = value;
+        country.dispatchEvent(new dom.window.Event('change'));
+        await flush();
+        assert.equal(country.value, value);
+        assert.equal(requests.filter(url => url.pathname === '/api/search').at(-1).searchParams.get('country'), value);
+        assert.equal(JSON.parse(dom.window.localStorage.getItem('trend-community-filters-v1')).communityCountry, value);
+    }
 });
 
 test('information field is shared with video and community, and fresh scope defaults to Korea', async t => {

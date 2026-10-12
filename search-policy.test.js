@@ -136,17 +136,17 @@ test('channel fallback retains actual popularity sorting within each channel', (
         ['AI robot news', 'AI robot blog', 'AI robot big repo', 'AI robot small repo']);
 });
 
-test('blank video and community browsing overrides saved locale and ranking, then ranks Korean newest first', () => {
+test('blank browsing keeps Korean video defaults but respects the selected community language', () => {
     for (const category of ['youtube', 'reddit']) {
         const o = options(new URLSearchParams({category,q:'  ',country:'US',sort:'popular',period:'all'}));
-        assert.equal(o.country, 'KR');
+        assert.equal(o.country, category === 'youtube' ? 'KR' : 'US');
         assert.equal(o.sort, 'latest');
         const result = rankItems([
             item('English recent story', '2026-10-12'),
             item('한국어 이전 자료', '2026-10-10'),
             item('한국어 최신 자료', '2026-10-11')
         ], o);
-        assert.deepEqual(result.map(value => value.title), ['한국어 최신 자료', '한국어 이전 자료', 'English recent story']);
+        assert.deepEqual(result.map(value => value.title), category === 'youtube' ? ['한국어 최신 자료', '한국어 이전 자료', 'English recent story'] : ['English recent story', '한국어 최신 자료', '한국어 이전 자료']);
         const queried = options(new URLSearchParams({category,q:'AI',country:'US',sort:'popular'}));
         assert.equal(queried.country, 'US');
         assert.equal(queried.sort, 'popular');

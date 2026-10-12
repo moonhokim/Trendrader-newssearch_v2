@@ -535,6 +535,7 @@ for (const id of communityFilterIds) {
     if ([...$(id).options].some(option => option.value === savedCommunityFilters[id])) $(id).value = savedCommunityFilters[id];
     $(id).addEventListener('change', saveCommunityFilters);
 }
+$('communityCountry').addEventListener('change', () => $('communityForm').requestSubmit());
 function saveInformationFilters() {
     const state = { q: $('searchInput').value, category, country: $('filterCountry').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value, rankingVersion: 2 };
     try { localStorage.setItem(stateKey, JSON.stringify(state)); } catch { /* Storage is optional. */ }
@@ -543,7 +544,6 @@ $('communityForm').addEventListener('submit', async event => {
     event.preventDefault();
     communityInitialized = true;
     if (!$('communityQuery').value.trim()) {
-        $('communityCountry').value = 'KR';
         $('communitySort').value = 'latest';
     }
     saveCommunityFilters();
