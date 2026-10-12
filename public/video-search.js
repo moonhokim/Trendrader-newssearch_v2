@@ -385,7 +385,6 @@ function render(){
 
 async function fetchData(){
     var kw=$('keyword').value.trim();
-    if(!kw){alert('검색어를 입력해주세요');return;}
     var token=++searchToken;
     var btn=$('searchBtn');btn.disabled=true;
     rawData=[];
@@ -395,6 +394,10 @@ async function fetchData(){
     $('backendBadge').textContent='백엔드: 연결 중...';$('backendBadge').className='status-badge';
     area.appendChild(h('div',{class:'spinner-wrap',style:'grid-column:1/-1'},h('div',{class:'spinner'}),h('div',{style:'color:#888;font-size:14px'},'영상을 불러오는 중... (YouTube는 살아있는 인스턴스를 찾느라 최대 수십 초)')));
     var opts={order:$('apiOrder').value,date:$('apiDate').value,dur:$('apiDuration').value,pages:parseInt($('apiPages').value,10)||1,platform:plat,format:$('apiFormat').value};
+    currentSort=opts.order==='date'?'date':opts.order==='viewCount'?'viewCount':'relevance';
+    isDescending=true;
+    document.querySelectorAll('.sort-btn').forEach(function(button){button.classList.toggle('active',button.dataset.sort===currentSort);});
+    $('orderToggle').textContent='⬇️';
     try{
         var res=await searchPlatforms(kw,opts);
         if(token!==searchToken)return;

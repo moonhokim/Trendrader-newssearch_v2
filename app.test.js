@@ -7,7 +7,7 @@ const html = await readFile(new URL('./public/index.html', import.meta.url), 'ut
 const script = await readFile(new URL('./public/app.js', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const item = { title: '실제 기사 제목', source: '뽐뿌 유머/감동', publisher: '작성자', date: new Date().toISOString(), dateLabel: '게시', description: '정상적인 기사 설명', metrics: [], url: 'https://example.com/article?id=1&no=2' };
-function setup(fetcher, url = 'http://localhost:3000', savedState, media) {
+function setup(fetcher, url = 'http://localhost:3000', savedState, media, savedServices = {}) {
     const dom = new JSDOM(html, { url, runScripts: 'outside-only' });
     dom.window.fetch = fetcher;
     if (media) dom.window.matchMedia = () => media;
@@ -15,6 +15,7 @@ function setup(fetcher, url = 'http://localhost:3000', savedState, media) {
     dialog.showModal = () => { dialog.open = true; };
     dialog.close = () => { dialog.open = false; };
     if (savedState) dom.window.localStorage.setItem('trend-search-filters-v1', JSON.stringify(savedState));
+    for (const [key, value] of Object.entries(savedServices)) dom.window.localStorage.setItem(key, JSON.stringify(value));
     dom.window.eval(script);
     return dom;
 }
@@ -63,6 +64,7 @@ test('service navigation isolates video state and community searches use their o
     doc.querySelector('[data-view="information"]').click();
     assert.equal(doc.querySelector('#informationView').hidden, false);
     assert.equal(doc.querySelector('#communityView').hidden, true);
+    await flush();
 });
 
 test('imported video search preserves filters, subscriber enrichment, sorting and copy actions', async t => {
@@ -206,7 +208,7 @@ test('URL filters restore, validate and persist; source health and stale cache s
     const doc = dom.window.document;
     const query = requests.find(url => url.pathname === '/api/search').searchParams;
     assert.equal(query.get('category'), 'youtube');
-    assert.equal(query.get('sort'), 'popular');
+    assert.equal(query.get('sort'), 'latest');
     assert.equal(doc.querySelector('#filterCountry').disabled, false);
     assert.match(doc.querySelector('#sourceStatuses').textContent, /조회 10건 · 표시 1건/);
     assert.match(doc.querySelector('#sourceStatuses').textContent, /1.2초/);
@@ -215,9 +217,9 @@ test('URL filters restore, validate and persist; source health and stale cache s
     assert.equal(JSON.parse(dom.window.localStorage.getItem('trend-search-filters-v1')).q, 'AI');
 });
 
-test('legacy defaults migrate but explicit relevance choices remain available', async t => {
+test('saved and explicit relevance choices remain available', async t => {
     for (const [url, saved, expected] of [
-        ['http://localhost:3000', { sort: 'relevance' }, 'popular'],
+        ['http://localhost:3000', { sort: 'relevance' }, 'relevance'],
         ['http://localhost:3000/?sort=relevance', {}, 'relevance'],
         ['http://localhost:3000', { sort: 'relevance', rankingVersion: 2 }, 'relevance']
     ]) {
@@ -245,7 +247,7 @@ test('CSV export uses displayed snapshot and neutralizes spreadsheet formulas', 
     assert.ok(csv.includes(item.url));
 });
 
-test('all categories accept country and latest sorting while fresh searches default to popular', async t => {
+test('all categories accept country and latest sorting while fresh searches default to all time and latest', async t => {
     const requests = [];
     const dom = setup(async url => { requests.push(new URL(url, 'http://localhost')); return response(); });
     t.after(() => dom.window.close());
@@ -253,7 +255,8 @@ test('all categories accept country and latest sorting while fresh searches defa
     const doc = dom.window.document;
     const lastSearch = () => requests.filter(url => url.pathname === '/api/search').at(-1).searchParams;
     assert.equal(lastSearch().get('category'), 'all');
-    assert.equal(lastSearch().get('sort'), 'popular');
+    assert.equal(lastSearch().get('sort'), 'latest');
+    assert.equal(lastSearch().get('period'), 'all');
     assert.deepEqual([...doc.querySelector('#filterSort').options].map(option => option.textContent), ['인기순 (조회·반응 우선)', '관련도 높은 순', '최신정보 순']);
     const country = doc.querySelector('#filterCountry');
     for (const chip of doc.querySelectorAll('.category-chip')) {
@@ -398,6 +401,7 @@ test('search conditions move between desktop panel and mobile dialog without los
     onResize(media);
     assert.ok(doc.getElementById('desktopSearchControls').contains(select));
     assert.equal(select.value, 'youtube');
+    await flush();
 });
 
 test('video conditions exist before iframe load and match the video search options', async t => {
@@ -438,4 +442,73 @@ test('mobile destinations open separate exploration, search and status surfaces'
     assert.equal(doc.getElementById('informationView').hidden, false);
     assert.equal(doc.getElementById('statusView').hidden, true);
     assert.equal(doc.getElementById('mobileSearchDialog').open, false);
+});
+
+test('first visits auto-collect latest results and saved service conditions survive reload', async t => {
+    const requests = [];
+    const savedServices = {
+        'trend-video-filters-v1': { apiPlatform:'youtube', apiDate:'7d', apiOrder:'viewCount' },
+        'trend-community-filters-v1': { communityScope:'global', communityCountry:'JP', communitySort:'relevance' }
+    };
+    const dom = setup(async url => { requests.push(new URL(url, 'http://localhost')); return response(); }, 'http://localhost:3000', {q:'저장 주제', category:'blog', period:'30d', sort:'popular'}, undefined, savedServices);
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    const first = requests.find(url => url.pathname === '/api/search').searchParams;
+    assert.equal(first.get('q'), '저장 주제');
+    assert.equal(first.get('period'), '30d');
+    assert.equal(first.get('sort'), 'popular');
+    doc.querySelector('[data-view="community"]').click();
+    await flush();
+    const community = requests.filter(url => url.pathname === '/api/search').at(-1).searchParams;
+    assert.equal(community.get('category'), 'reddit');
+    assert.equal(community.get('q'), '저장 주제');
+    assert.equal(community.get('country'), 'JP');
+    assert.equal(community.get('sort'), 'relevance');
+    assert.equal(doc.getElementById('communityScope').value, 'global');
+    doc.querySelector('[data-view="video"]').click();
+    assert.equal(doc.getElementById('shared-apiOrder').value, 'viewCount');
+    const frame = doc.getElementById('videoSearchFrame');
+    const videoHtml = await readFile(new URL('./public/video-search.html', import.meta.url), 'utf8');
+    frame.contentDocument.open(); frame.contentDocument.write(videoHtml); frame.contentDocument.close();
+    let searches = 0;
+    frame.contentDocument.getElementById('searchBtn').addEventListener('click', () => { searches++; });
+    frame.dispatchEvent(new dom.window.Event('load'));
+    assert.equal(searches, 1);
+    assert.equal(frame.contentDocument.getElementById('keyword').value, '저장 주제');
+    assert.equal(frame.contentDocument.getElementById('apiPlatform').value, 'youtube');
+    assert.equal(frame.contentDocument.getElementById('apiDate').value, '7d');
+    assert.equal(frame.contentDocument.getElementById('apiOrder').value, 'viewCount');
+    const order = doc.getElementById('shared-apiOrder');
+    order.value = 'date'; order.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(JSON.parse(dom.window.localStorage.getItem('trend-video-filters-v1')).apiOrder, 'date');
+    doc.getElementById('communitySort').value = 'latest';
+    doc.getElementById('communitySort').dispatchEvent(new dom.window.Event('change'));
+    assert.equal(JSON.parse(dom.window.localStorage.getItem('trend-community-filters-v1')).communitySort, 'latest');
+    assert.deepEqual(Array.from(doc.querySelectorAll('.bottom-nav-item'), item => item.textContent.trim()), ['홈', '검색', '탐색', '상태']);
+});
+
+test('video collects without a keyword and displays newest videos first', async t => {
+    const videoHtml = await readFile(new URL('./public/video-search.html', import.meta.url), 'utf8');
+    const videoScript = await readFile(new URL('./public/video-search.js', import.meta.url), 'utf8');
+    const dom = new JSDOM(videoHtml, {url:'http://localhost/video-search.html',runScripts:'outside-only'});
+    t.after(() => dom.window.close());
+    const requests = [];
+    dom.window.fetch = async url => {
+        requests.push(new URL(url, 'http://localhost'));
+        return {ok:true,text:async () => JSON.stringify({items:[
+            {title:'이전 영상',url:'https://www.youtube.com/watch?v=abcdefghijk',date:'2025-01-01',publisher:'채널',durationSeconds:300},
+            {title:'최신 영상',url:'https://www.youtube.com/watch?v=lmnopqrstuv',date:'2026-01-01',publisher:'채널',durationSeconds:300}
+        ],statuses:[]})};
+    };
+    dom.window.eval(videoScript);
+    const doc = dom.window.document;
+    doc.getElementById('apiPlatform').value = 'youtube';
+    doc.getElementById('apiSubs').value = '0';
+    await dom.window.fetchData();
+    assert.equal(requests[0].searchParams.get('q'), '');
+    assert.equal(requests[0].searchParams.get('sort'), 'latest');
+    assert.equal(requests[0].searchParams.get('period'), 'all');
+    assert.equal(doc.querySelector('.card-title').textContent, '최신 영상');
+    assert.ok(doc.querySelector('[data-sort="date"]').classList.contains('active'));
 });

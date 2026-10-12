@@ -368,3 +368,21 @@ body:has(#mobileSearchDialog[open]) { overflow:hidden; }
     .mobile-search-heading { position:sticky; top:-24px; z-index:1; background:var(--glass-bg); padding:12px 0; }
     .trending-ticker { min-height:76px; }
 }
+/* Header boundaries use the same columns as the navigation and search panel. */
+@media(min-width:769px) {
+    :root { --navigation-width:150px; --search-panel-width:320px; }
+    .app-layout { grid-template-columns:var(--navigation-width) minmax(0,1fr) var(--search-panel-width); }
+    .sticky-header > header { display:grid; grid-template-columns:var(--navigation-width) minmax(0,1fr) var(--search-panel-width); gap:0; padding:0; align-items:stretch; }
+    header .brand { min-width:0; padding:16px 12px; justify-content:center; }
+    header .brand-image { width:100%; max-width:190px; }
+    header .trending-ticker { width:100%; min-width:0; min-height:104px; border-radius:0; margin:0; border-width:0 1px; padding:16px 20px; }
+    header .header-actions { margin:0; padding:16px; justify-content:center; flex-wrap:wrap; gap:12px; }
+    header .ticker-heading { display:flex; }
+    .main-container, .workspace-view { max-width:none; }
+}
+@media(min-width:769px) and (max-width:1050px) {
+    :root { --navigation-width:112px; --search-panel-width:270px; }
+    header .ticker-heading { display:none; }
+    header .brand { padding:12px 8px; }
+}
+#communityResultStatus { margin-bottom:20px; padding:12px 16px; border:1px solid var(--glass-border); border-radius:8px; background:var(--glass-bg); }

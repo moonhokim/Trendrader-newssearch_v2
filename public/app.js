@@ -224,8 +224,6 @@ function restoreState() {
     try { saved = JSON.parse(localStorage.getItem(stateKey)) || {}; } catch { /* Ignore damaged preferences. */ }
     const params = new URLSearchParams(location.search);
     const state = params.size ? Object.fromEntries(params) : saved;
-    // Migrate the old implicit relevance default, but retain explicit URL choices.
-    if (!params.size && !saved.rankingVersion && state.sort === 'relevance') state.sort = 'popular';
     category = ['all', ...Object.keys(labels)].includes(state.category) ? state.category : 'all';
     $('searchInput').value = String(state.q || '').slice(0, 180);
     for (const [key, id] of [['country', 'filterCountry'], ['field', 'filterField'], ['period', 'filterPeriod'], ['sort', 'filterSort']]) {
@@ -258,8 +256,8 @@ function select(id, entries, value) {
 }
 select('filterField', ['', '경제', '정치', '금융', '투자', '주식', '부동산', 'IT', 'AI', '스포츠', '여행', '게임', '자동차', '건강', '교육', '연예', '음식', '패션', '과학'].map(f => [f, f || '전체']), '');
 select('filterCountry', [['KR', '대한민국'], ['US', '미국'], ['JP', '일본'], ['CN', '중국'], ['GB', '영국']], 'KR');
-select('filterPeriod', [['1d', '최근 24시간'], ['3d', '최근 3일'], ['7d', '최근 1주'], ['14d', '최근 2주'], ['30d', '최근 1개월'], ['90d', '최근 3개월'], ['180d', '최근 6개월'], ['365d', '최근 1년'], ['all', '전체']], '7d');
-select('filterSort', [['popular', '인기순 (조회·반응 우선)'], ['relevance', '관련도 높은 순'], ['latest', '최신정보 순']], 'popular');
+select('filterPeriod', [['1d', '최근 24시간'], ['3d', '최근 3일'], ['7d', '최근 1주'], ['14d', '최근 2주'], ['30d', '최근 1개월'], ['90d', '최근 3개월'], ['180d', '최근 6개월'], ['365d', '최근 1년'], ['all', '전체']], 'all');
+select('filterSort', [['popular', '인기순 (조회·반응 우선)'], ['relevance', '관련도 높은 순'], ['latest', '최신정보 순']], 'latest');
 restoreState();
 [['all', '전체'], ...Object.entries(labels)].forEach(([key, label]) => {
     const chip = node('button', `category-chip ${key === category ? 'active' : ''}`, label);
@@ -320,11 +318,13 @@ const videoFilterDefinitions = [
     ['apiFormat', '영상 형식', [['all', '전체'], ['short', '숏폼 (3분 이하)'], ['long', '롱폼 (3분 초과)']], 'all'],
     ['apiDate', '업로드 기간', [['all', '전체'], ['24h', '최근 24시간'], ['7d', '최근 1주'], ['30d', '최근 1개월'], ['1y', '최근 1년']], 'all'],
     ['apiDuration', '영상 길이', [['any', '전체'], ['short', '4분 미만'], ['medium', '4~20분'], ['long', '20분 초과']], 'any'],
-    ['apiOrder', '정렬 기준', [['relevance', '관련도순'], ['viewCount', '조회수순'], ['date', '최신순']], 'relevance'],
+    ['apiOrder', '정렬 기준', [['relevance', '관련도순'], ['viewCount', '조회수순'], ['date', '최신순']], 'date'],
     ['apiPages', '수집 범위', [['1', '약 20개'], ['2', '약 40개'], ['3', '약 60개'], ['5', '약 100개']], '2'],
     ['apiSubs', '채널 구독자 정보', [['1', '조회 (인사이트 계산)'], ['0', '조회 안 함 (빠른 검색)']], '1']
 ];
 searchControls.video.append(node('h2', '', '영상 검색 조건'));
+let savedVideoFilters = {};
+try { savedVideoFilters = JSON.parse(localStorage.getItem('trend-video-filters-v1')) || {}; } catch { /* Storage is optional. */ }
 for (const [id, title, options, defaultValue] of videoFilterDefinitions) {
     const field = node('div', 'filter-group');
     const label = node('label', 'filter-label', title);
@@ -333,12 +333,18 @@ for (const [id, title, options, defaultValue] of videoFilterDefinitions) {
     label.htmlFor = select.id;
     for (const [value, text] of options) { const option = node('option', '', text); option.value = value; select.append(option); }
     select.value = defaultValue;
+    if (options.some(([value]) => value === savedVideoFilters[id])) select.value = savedVideoFilters[id];
     select.addEventListener('change', () => {
         const original = $('videoSearchFrame').contentDocument?.getElementById(id);
         if (original) original.value = select.value;
+        saveVideoFilters();
     });
     field.append(label, select);
     searchControls.video.append(field);
+}
+function saveVideoFilters() {
+    const values = Object.fromEntries(videoFilterDefinitions.map(([id]) => [id, $(`shared-${id}`).value]));
+    try { localStorage.setItem('trend-video-filters-v1', JSON.stringify(values)); } catch { /* Storage is optional. */ }
 }
 const mobileLayout = window.matchMedia?.('(max-width: 768px)');
 function placeSearchControls() {
@@ -356,14 +362,14 @@ function mountVideoOptions(frame) {
         const select = $(`shared-${original.id}`);
         if (!select) return;
         original.value = select.value;
-        original.addEventListener('change', () => { select.value = original.value; });
+        original.addEventListener('change', () => { select.value = original.value; saveVideoFilters(); });
     });
 }
 placeSearchControls();
 let bottomDestination = 'home';
 function setBottomNav(destination) {
     bottomDestination = destination;
-    const destinations = ['home', 'explore', 'search', 'status'];
+    const destinations = ['home', 'search', 'explore', 'status'];
     document.querySelectorAll('.bottom-nav-item').forEach((button, index) => {
         const active = destinations[index] === destination;
         button.classList.toggle('active', active);
@@ -405,7 +411,10 @@ for (const [value, title] of [['all', '전체 정보'], ...Object.entries(labels
     });
     $('exploreCategories').append(button);
 }
-const statusObserver = new MutationObserver(() => { if (!$('statusView').hidden) refreshStatusView(); });
+const statusObserver = new MutationObserver(() => {
+    $('communityResultStatus').textContent = $('communityStatus').textContent;
+    if (!$('statusView').hidden) refreshStatusView();
+});
 for (const id of ['searchStatus', 'communityStatus', 'sourceStatuses']) statusObserver.observe($(id), { childList: true, subtree: true, characterData: true });
 $('mobileSearchDialog').addEventListener('close', () => {
     if (bottomDestination === 'search') setBottomNav(!$('exploreView').hidden ? 'explore' : !$('statusView').hidden ? 'status' : 'home');
@@ -416,18 +425,13 @@ function syncQuery(value) {
     if (keyword) keyword.value = value;
 }
 function submitActiveSearch() {
-    switchView(activeView);
+    switchView(activeView, false);
     if (activeView === 'information') handleSearch(true);
     else if (activeView === 'community') $('communityForm').requestSubmit();
     else {
         const button = $('videoSearchFrame').contentDocument?.getElementById('searchBtn');
         if (button) button.click();
-        else {
-            $('videoSearchFrame').addEventListener('load', () => {
-                syncQuery($('sharedQuery').value);
-                $('videoSearchFrame').contentDocument?.getElementById('searchBtn')?.click();
-            }, { once: true });
-        }
+        // The initial frame load runs the search with the latest query and conditions.
     }
 }
 function selectTrend(query) {
@@ -437,7 +441,10 @@ function selectTrend(query) {
     else $('sharedQuery').focus({ preventScroll: true });
 }
 for (const id of ['searchInput', 'communityQuery', 'sharedQuery', 'mobileQuery']) {
-    $(id).addEventListener('input', event => syncQuery(event.target.value));
+    $(id).addEventListener('input', event => {
+        syncQuery(event.target.value);
+        saveInformationFilters();
+    });
 }
 syncQuery($('searchInput').value);
 for (const id of ['desktopSearchForm', 'mobileSearchForm']) {
@@ -463,7 +470,8 @@ window.matchMedia?.('(max-width: 768px)').addEventListener('change', event => {
     if (!event.matches && $('mobileSearchDialog').open) $('mobileSearchDialog').close();
     placeSearchControls();
 });
-function switchView(view) {
+function switchView(view, autoCollect = true) {
+    const previousView = activeView;
     $('exploreView').hidden = true;
     $('statusView').hidden = true;
     setBottomNav('home');
@@ -478,6 +486,11 @@ function switchView(view) {
     document.querySelector('.bottom-nav').hidden = false;
     $('mobileSearchTitle').textContent = `${{ information: '정보', video: '영상', community: '커뮤니티' }[view]} 검색`;
     if (view === 'video' && !$('videoSearchFrame').getAttribute('src')) $('videoSearchFrame').src = $('videoSearchFrame').dataset.src;
+    if (autoCollect && (view !== previousView || (view === 'community' && !communityInitialized))) {
+        if (view === 'information') handleSearch();
+        if (view === 'community') $('communityForm').requestSubmit();
+        if (view === 'video') $('videoSearchFrame').contentDocument?.getElementById('searchBtn')?.click();
+    }
 }
 document.querySelectorAll('.workspace-tab').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
 let videoResizeObserver;
@@ -492,8 +505,9 @@ $('videoSearchFrame').addEventListener('load', () => {
     const keyword = frame.contentDocument.getElementById('keyword');
     if (keyword) {
         keyword.value = $('sharedQuery').value;
-        keyword.addEventListener('input', () => syncQuery(keyword.value));
+        keyword.addEventListener('input', () => { syncQuery(keyword.value); saveInformationFilters(); });
     }
+    if (frame.contentDocument.getElementById('searchBtn')) frame.contentDocument.getElementById('searchBtn').click();
     const fitHeight = () => { frame.style.height = `${Math.max(500, Math.ceil(body.scrollHeight))}px`; };
     fitHeight();
     if (window.ResizeObserver) {
@@ -503,8 +517,26 @@ $('videoSearchFrame').addEventListener('load', () => {
 });
 let communityController;
 let communitySequence = 0;
+let communityInitialized = false;
+const communityFilterIds = ['communityScope', 'communityCountry', 'communitySort'];
+function saveCommunityFilters() {
+    try { localStorage.setItem('trend-community-filters-v1', JSON.stringify(Object.fromEntries(communityFilterIds.map(id => [id, $(id).value])))); } catch { /* Storage is optional. */ }
+}
+let savedCommunityFilters = {};
+try { savedCommunityFilters = JSON.parse(localStorage.getItem('trend-community-filters-v1')) || {}; } catch { /* Storage is optional. */ }
+for (const id of communityFilterIds) {
+    if ([...$(id).options].some(option => option.value === savedCommunityFilters[id])) $(id).value = savedCommunityFilters[id];
+    $(id).addEventListener('change', saveCommunityFilters);
+}
+function saveInformationFilters() {
+    const state = { q: $('searchInput').value, category, country: $('filterCountry').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value, rankingVersion: 2 };
+    try { localStorage.setItem(stateKey, JSON.stringify(state)); } catch { /* Storage is optional. */ }
+}
 $('communityForm').addEventListener('submit', async event => {
     event.preventDefault();
+    communityInitialized = true;
+    saveCommunityFilters();
+    saveInformationFilters();
     communityController?.abort();
     communityController = new AbortController();
     const request = ++communitySequence;
