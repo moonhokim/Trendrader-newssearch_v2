@@ -53,6 +53,7 @@ test('service navigation isolates video state and community searches use their o
     assert.equal(doc.querySelector('#videoSearchFrame').getAttribute('src'), '/video-search.html');
     doc.querySelector('[data-view="community"]').click();
     doc.querySelector('#communityQuery').value = 'AI';
+    doc.querySelector('#communityScope').value = 'all';
     doc.querySelector('#communityCountry').value = 'US';
     doc.querySelector('#communitySort').value = 'latest';
     doc.querySelector('#communitySearchBtn').click();
@@ -511,6 +512,10 @@ test('video collects without a keyword and displays newest videos first', async 
     assert.equal(requests[0].searchParams.get('period'), 'all');
     assert.equal(doc.querySelector('.card-title').textContent, '최신 영상');
     assert.ok(doc.querySelector('[data-sort="date"]').classList.contains('active'));
+    doc.getElementById('keyword').value = '반도체';
+    doc.getElementById('keyword').dataset.searchField = 'AI';
+    await dom.window.fetchData();
+    assert.equal(requests.at(-1).searchParams.get('q'), '반도체 AI');
 });
 
 test('blank community searches use Korean latest even when saved conditions differ', async t => {
@@ -524,4 +529,27 @@ test('blank community searches use Korean latest even when saved conditions diff
     assert.equal(request.searchParams.get('q'), '');
     assert.equal(request.searchParams.get('country'), 'KR');
     assert.equal(request.searchParams.get('sort'), 'latest');
+});
+
+test('information field is shared with video and community, and fresh scope defaults to Korea', async t => {
+    const requests = [];
+    const dom = setup(async url => {requests.push(new URL(url,'http://localhost'));return response();});
+    t.after(() => dom.window.close());
+    await flush();
+    const doc=dom.window.document;
+    assert.equal(doc.getElementById('communityScope').value,'korea');
+    const field=doc.getElementById('filterField');
+    field.value='AI'; field.dispatchEvent(new dom.window.Event('change'));
+    await flush();
+    doc.querySelector('[data-view="community"]').click();
+    await flush();
+    assert.equal(requests.filter(url=>url.pathname==='/api/search').at(-1).searchParams.get('field'),'AI');
+    doc.querySelector('[data-view="video"]').click();
+    const frame=doc.getElementById('videoSearchFrame');
+    frame.contentDocument.open();frame.contentDocument.write('<body><input id="keyword"></body>');frame.contentDocument.close();
+    frame.dispatchEvent(new dom.window.Event('load'));
+    assert.equal(frame.contentDocument.getElementById('keyword').dataset.searchField,'AI');
+    field.value='경제';field.dispatchEvent(new dom.window.Event('change'));
+    await flush();
+    assert.equal(frame.contentDocument.getElementById('keyword').dataset.searchField,'경제');
 });

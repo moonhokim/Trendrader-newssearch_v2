@@ -303,6 +303,7 @@ $('closeSplitBtn').addEventListener('click', () => $('splitView').classList.remo
 $('autoRefresh').addEventListener('change', () => { clearTimeout(timer); if ($('autoRefresh').checked) handleSearch(); });
 document.querySelector('#filterCountry').addEventListener('change', loadTrends);
 document.querySelector('#filterField').addEventListener('change', loadTrends);
+document.querySelector('#filterField').addEventListener('change', syncSearchField);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && $('autoRefresh').checked) handleSearch(); });
 loadTrends();
 handleSearch();
@@ -424,6 +425,11 @@ function syncQuery(value) {
     const keyword = $('videoSearchFrame').contentDocument?.getElementById('keyword');
     if (keyword) keyword.value = value;
 }
+function syncSearchField() {
+    const field = $('filterField').value;
+    const keyword = $('videoSearchFrame').contentDocument?.getElementById('keyword');
+    if (keyword) keyword.dataset.searchField = field;
+}
 function submitActiveSearch() {
     switchView(activeView, false);
     if (activeView === 'information') handleSearch(true);
@@ -505,6 +511,7 @@ $('videoSearchFrame').addEventListener('load', () => {
     const keyword = frame.contentDocument.getElementById('keyword');
     if (keyword) {
         keyword.value = $('sharedQuery').value;
+        syncSearchField();
         keyword.addEventListener('input', () => { syncQuery(keyword.value); saveInformationFilters(); });
     }
     if (frame.contentDocument.getElementById('searchBtn')) frame.contentDocument.getElementById('searchBtn').click();
@@ -548,7 +555,7 @@ $('communityForm').addEventListener('submit', async event => {
     const timeout = setTimeout(() => requestController.abort(), 25000);
     $('communityStatus').textContent = '커뮤니티를 검색하고 있습니다…';
     $('communityResults').setAttribute('aria-busy', 'true');
-    const params = new URLSearchParams({ q: $('communityQuery').value.trim(), category: 'reddit', country: $('communityCountry').value, sort: $('communitySort').value, period: 'all' });
+    const params = new URLSearchParams({ q: $('communityQuery').value.trim(), field: $('filterField').value, category: 'reddit', country: $('communityCountry').value, sort: $('communitySort').value, period: 'all' });
     try {
         const response = await fetch(`/api/search?${params}`, { signal: communityController.signal });
         const data = await response.json();

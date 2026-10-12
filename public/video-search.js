@@ -391,8 +391,10 @@ function render(){
 }
 
 async function fetchData(){
-    var kw=$('keyword').value.trim();
-    if(!kw){$('apiOrder').value='date';$('apiOrder').dispatchEvent(new Event('change',{bubbles:true}));}
+    var enteredQuery=$('keyword').value.trim();
+    var field=$('keyword').dataset.searchField||'';
+    var kw=[enteredQuery,field&&field!==enteredQuery?field:''].filter(Boolean).join(' ');
+    if(!enteredQuery){$('apiOrder').value='date';$('apiOrder').dispatchEvent(new Event('change',{bubbles:true}));}
     var token=++searchToken;
     var btn=$('searchBtn');btn.disabled=true;
     rawData=[];
