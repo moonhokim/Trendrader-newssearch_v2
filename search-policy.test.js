@@ -68,10 +68,10 @@ test('country localizes predefined field keywords while preserving users query',
         assert.equal(o.sort, 'popular');
     }
 });
-test('public YouTube requests carry country, language, and localized default query', async t => {
+test('public YouTube keyword requests retain the selected country and language', async t => {
     const key = process.env.YOUTUBE_API_KEY; delete process.env.YOUTUBE_API_KEY;
     t.after(() => { if (key !== undefined) process.env.YOUTUBE_API_KEY = key; });
-    const data = await search(options(new URLSearchParams({ category: 'youtube', country: 'JP', period: 'all' })), async (url, config) => {
+    const data = await search(options(new URLSearchParams({ category: 'youtube', country: 'JP', period: 'all', q: '日本 人気 動画' })), async (url, config) => {
         assert.equal(url.searchParams.get('hl'), 'ja');
         assert.equal(url.searchParams.get('gl'), 'JP');
         assert.equal(url.searchParams.get('search_query'), '日本 人気 動画');
@@ -134,4 +134,21 @@ test('channel fallback retains actual popularity sorting within each channel', (
     ];
     assert.deepEqual(rankItems(candidates, settings({ sort: 'popular' })).map(i => i.title),
         ['AI robot news', 'AI robot blog', 'AI robot big repo', 'AI robot small repo']);
+});
+
+test('blank video and community browsing overrides saved locale and ranking, then ranks Korean newest first', () => {
+    for (const category of ['youtube', 'reddit']) {
+        const o = options(new URLSearchParams({category,q:'  ',country:'US',sort:'popular',period:'all'}));
+        assert.equal(o.country, 'KR');
+        assert.equal(o.sort, 'latest');
+        const result = rankItems([
+            item('English recent story', '2026-10-12'),
+            item('한국어 이전 자료', '2026-10-10'),
+            item('한국어 최신 자료', '2026-10-11')
+        ], o);
+        assert.deepEqual(result.map(value => value.title), ['한국어 최신 자료', '한국어 이전 자료', 'English recent story']);
+        const queried = options(new URLSearchParams({category,q:'AI',country:'US',sort:'popular'}));
+        assert.equal(queried.country, 'US');
+        assert.equal(queried.sort, 'popular');
+    }
 });

@@ -13,6 +13,8 @@ const durations = { '1d': 1, '3d': 3, '7d': 7, '14d': 14, '30d': 30, '90d': 90, 
 export function options(params) {
     const o = { q: (params.get('q') || '').trim(), category: params.get('category') || 'all', country: params.get('country') || 'KR', period: params.get('period') || '7d', sort: params.get('sort') || 'popular', field: (params.get('field') || '').trim() };
     if (o.q.length > 180 || o.field.length > 30 || !['all', 'news', 'github', 'blog', 'reddit', 'humor', 'youtube'].includes(o.category) || !Object.hasOwn(locales, o.country) || !(o.period === 'all' || Object.hasOwn(durations, o.period)) || !['popular', 'latest', 'relevance'].includes(o.sort)) throw new Error('검색 조건을 확인하세요. 검색어는 180자까지 입력할 수 있습니다.');
+    o.koreanBrowse = !o.q && ['youtube', 'reddit'].includes(o.category);
+    if (o.koreanBrowse) { o.country = 'KR'; o.sort = 'latest'; }
     o.language = regions[o.country].language;
     o.videoDuration = params.get('videoDuration') || 'any';
     if (!['any', 'short', 'medium', 'long'].includes(o.videoDuration)) throw new Error('영상 길이 조건을 확인하세요.');
@@ -77,13 +79,15 @@ async function community(o, fetcher) {
     return data.hits.map(i => ({ title: plain(i.title), url: safeUrl(i.url) || `https://news.ycombinator.com/item?id=${encodeURIComponent(i.objectID)}`, source: 'Hacker News', publisher: i.author || 'Hacker News', date: iso(i.created_at), dateLabel: '게시', description: plain(i.story_text) || '본문 설명이 제공되지 않습니다. 원문에서 확인하세요.', metrics: [`추천 ${i.points ?? 0}`, `댓글 ${i.num_comments ?? 0}`] }));
 }
 async function youtube(o, fetcher) {
+    const browseQuery = o.koreanBrowse ? '한국' : '';
+    const query = o.query || browseQuery;
     if (process.env.YOUTUBE_API_KEY) {
-        const url = new URL(`https://www.googleapis.com/youtube/v3/${o.query ? 'search' : 'videos'}`);
-        url.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: o.query ? 'snippet' : 'snippet,statistics', maxResults: '30', regionCode: o.country,
-            ...(o.query ? { q: o.query, type: 'video', videoDuration:o.videoDuration || 'any', relevanceLanguage: o.language === 'zh' ? 'zh-Hans' : o.language, order: o.sort === 'latest' ? 'date' : o.sort === 'popular' ? 'viewCount' : 'relevance', ...(o.since ? { publishedAfter: new Date(o.since).toISOString() } : {}) } : { chart: 'mostPopular' }) }).toString();
+        const url = new URL(`https://www.googleapis.com/youtube/v3/${query ? 'search' : 'videos'}`);
+        url.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: query ? 'snippet' : 'snippet,statistics', maxResults: '30', regionCode: o.country,
+            ...(query ? { q: query, type: 'video', videoDuration:o.videoDuration || 'any', relevanceLanguage: o.language === 'zh' ? 'zh-Hans' : o.language, order: o.sort === 'latest' ? 'date' : o.sort === 'popular' ? 'viewCount' : 'relevance', ...(o.since ? { publishedAfter: new Date(o.since).toISOString() } : {}) } : { chart: 'mostPopular' }) }).toString();
         const data = await upstream(url, true, fetcher, o.country);
         if (!Array.isArray(data.items)) throw new Error('YouTube API 응답 형식 오류');
-        if (o.query && (o.sort === 'popular' || o.videoDuration !== 'any') && data.items.length) {
+        if (query && (o.sort === 'popular' || o.videoDuration !== 'any') && data.items.length) {
             const statsUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
             statsUrl.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: o.videoDuration !== 'any' ? 'statistics,contentDetails' : 'statistics', id: data.items.map(i => i.id?.videoId).filter(Boolean).join(',') }).toString();
             try {
@@ -102,7 +106,7 @@ async function youtube(o, fetcher) {
         }));
     }
     const url = new URL('https://www.youtube.com/results');
-    url.searchParams.set('search_query', o.query || regions[o.country].videoQuery);
+    url.searchParams.set('search_query', query || regions[o.country].videoQuery);
     url.searchParams.set('hl', o.language);
     url.searchParams.set('gl', o.country);
     if (o.sort === 'popular' || o.sort === 'latest' || o.period !== 'all' || o.videoDuration !== 'any') {
@@ -201,7 +205,7 @@ export async function search(o, fetcher = fetch) {
     for (const status of statuses) {
         status.durationMs = timing[status.provider];
         status.displayedCount = items.filter(item => item.provider === status.provider).length;
-        if (status.provider === 'youtube') status.note = process.env.YOUTUBE_API_KEY ? '공식 YouTube Data API · 검색어가 없으면 지역 인기 차트' : '공개 검색 HTML · 인기 차트가 아니며 게시 시각은 추정치';
+        if (status.provider === 'youtube') status.note = process.env.YOUTUBE_API_KEY ? `공식 YouTube Data API · ${o.koreanBrowse ? '한국어 주제 최신 검색' : '검색어가 없으면 지역 인기 차트'}` : `공개 검색 HTML · ${o.koreanBrowse ? '한국어 주제 최신 검색 · ' : ''}인기 차트가 아니며 게시 시각은 추정치`;
         if (status.provider === 'github') status.note = 'GitHub는 자연어 필터를 지원하지 않아 제목·설명의 언어를 추정해 우선 정렬합니다. 최신순 날짜는 코드 갱신 시각입니다.';
         if (Object.hasOwn(regionalBlogs, status.provider)) status.note = '선택 지역 블로그 · Google 뉴스 사이트 한정 색인 검색 (전체 게시물 수집 아님)';
     }
@@ -280,8 +284,9 @@ export function createServer(fetcher = fetch, config = {}) {
             }
             if (url.pathname === '/api/video-platform') {
                 const platform = url.searchParams.get('platform');
-                const q = (url.searchParams.get('q') || '').trim();
-                const order = url.searchParams.get('order') || 'relevance';
+                const enteredQuery = (url.searchParams.get('q') || '').trim();
+                const q = enteredQuery || '한국';
+                const order = enteredQuery ? url.searchParams.get('order') || 'relevance' : 'date';
                 const date = url.searchParams.get('date') || 'all';
                 const pages = Number(url.searchParams.get('pages') || 2);
                 if (!['dailymotion', 'peertube'].includes(platform) || !q || q.length > 180 || !['relevance', 'viewCount', 'date'].includes(order) || !['all', '24h', '7d', '30d', '1y'].includes(date) || ![1, 2, 3, 5].includes(pages)) return send(400, { error: '영상 검색 조건을 확인하세요.' });

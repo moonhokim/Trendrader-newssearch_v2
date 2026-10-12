@@ -116,6 +116,7 @@ export function rankItems(items, o) {
         const score = b.relevance.score - a.relevance.score;
         const native = (a.sourceRank ?? 0) - (b.sourceRank ?? 0);
         const stable = String(a.url).localeCompare(String(b.url));
+        if (o.koreanBrowse) return lang || newest || native || stable;
         if (o.sort === 'popular') {
             const popularity = Number(b.popularityScore !== null) - Number(a.popularityScore !== null)
                 || (b.popularityScore ?? 0) - (a.popularityScore ?? 0);
@@ -135,6 +136,7 @@ export function rankItems(items, o) {
     });
 }
 export function rankingNote(o) {
+    if (o.koreanBrowse) return '검색어 없음 · 한국어 자료 우선 · 언어 그룹 안에서 게시 시각 최신순 · 언어는 메타데이터/문자 기반 추정';
     const language = regions[o.country].name;
     if (o.sort === 'popular') return `${language} 우선 수집 · 여러 채널 중 인기 지표가 없는 자료가 있으면 뉴스 → 유튜브 → 커뮤니티 → 블로그 → 깃허브 순 · 각 채널 안에서는 검색어 일치도·조회·반응 순 · 뉴스 관심도는 유사 보도 기반 추정 · 동일 제목 제외`;
     return o.sort === 'latest'

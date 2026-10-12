@@ -535,6 +535,10 @@ function saveInformationFilters() {
 $('communityForm').addEventListener('submit', async event => {
     event.preventDefault();
     communityInitialized = true;
+    if (!$('communityQuery').value.trim()) {
+        $('communityCountry').value = 'KR';
+        $('communitySort').value = 'latest';
+    }
     saveCommunityFilters();
     saveInformationFilters();
     communityController?.abort();

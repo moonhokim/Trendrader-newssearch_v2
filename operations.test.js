@@ -61,7 +61,7 @@ test('upstream body limit rejects declared and streamed oversized bodies', async
     await assert.rejects(readUpstream(new Response('12345'), 4), /크기/);
     await assert.rejects(readUpstream(new Response('a', { headers: { 'content-length': '100' } }), 4), /크기/);
 });
-test('official YouTube API selects chart or search and keeps key out of results', async t => {
+test('official YouTube API uses Korean latest search for blank queries and keeps key out of results', async t => {
     const previous = process.env.YOUTUBE_API_KEY;
     process.env.YOUTUBE_API_KEY = 'test-secret';
     t.after(() => { if (previous === undefined) delete process.env.YOUTUBE_API_KEY; else process.env.YOUTUBE_API_KEY = previous; });
@@ -69,8 +69,9 @@ test('official YouTube API selects chart or search and keeps key out of results'
         const data = await search(options(new URLSearchParams({ category: 'youtube', period: 'all', q, sort: 'relevance' })), async url => {
             assert.equal(url.hostname, 'www.googleapis.com');
             assert.equal(url.searchParams.get('key'), 'test-secret');
-            assert.equal(url.pathname.endsWith(q ? '/search' : '/videos'), true);
-            assert.equal(url.searchParams.get(q ? 'order' : 'chart'), q ? 'relevance' : 'mostPopular');
+            assert.equal(url.pathname.endsWith('/search'), true);
+            assert.equal(url.searchParams.get('order'), q ? 'relevance' : 'date');
+            assert.equal(url.searchParams.get('q'), q || '한국');
             if (q) assert.equal(url.searchParams.get('relevanceLanguage'), 'ko');
             return Response.json({ items: [{ id: q ? { videoId: 'abc' } : 'abc', snippet: { title: 'Video', publishedAt: new Date().toISOString() } }] });
         });

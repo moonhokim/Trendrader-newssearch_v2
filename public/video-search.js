@@ -208,7 +208,7 @@ async function searchYT(q,o){
     try {
         var data=await fetchJSON('/api/search?'+new URLSearchParams({category:'youtube',q:q,country:'KR',period:periods[o.date]||'all',sort:sorts[o.order]||'relevance',videoDuration:o.format==='short'&&o.dur==='any'?'short':o.dur}),20000);
         if(!Array.isArray(data.items))throw new Error('YouTube 검색 응답 형식 오류');
-        var items=data.items.map(function(i){return {id:new URL(i.url).searchParams.get('v'),platform:'youtube',title:i.title,channelTitle:i.publisher,channelId:i.channelId||'',url:i.url,thumb:i.thumbnail,publishedAt:new Date(i.date||0),viewCount:i.viewCount===null?null:(i.viewCount??null),sec:i.durationSeconds||0,subCount:null};});
+        var items=data.items.map(function(i){return {id:new URL(i.url).searchParams.get('v'),platform:'youtube',languageMatch:i.languageMatch,title:i.title,channelTitle:i.publisher,channelId:i.channelId||'',url:i.url,thumb:i.thumbnail,publishedAt:new Date(i.date||0),viewCount:i.viewCount===null?null:(i.viewCount??null),sec:i.durationSeconds||0,subCount:null};});
         return {items:clientFilter(items,o),backend:{kind:'site',base:location.host}};
     } catch(error) {
         // Public instances remain a fallback when the site's collector fails.
@@ -372,11 +372,18 @@ function makeCard(i){
                 h('button',{class:'ai-btn',onclick:function(){cpTxt(buildPrompt(i),'AI 기획안 복사됨!');}},'🤖 AI 기획'))));
 }
 
+function koreanPriority(item){
+    if(item.languageMatch!==undefined)return item.languageMatch;
+    return /[가-힣]{2}/.test((item.title||'')+' '+(item.channelTitle||''))?3:0;
+}
 function render(){
     var el=$('resultsArea');
     el.textContent='';
     if(!rawData.length){el.appendChild(h('div',{class:'empty-state',style:'grid-column:1/-1'},h('p',{},'데이터 없음')));return;}
-    rawData.sort(function(a,b){var x=sortVal(a,currentSort),y=sortVal(b,currentSort);return isDescending?y-x:x-y;});
+    rawData.sort(function(a,b){
+        if(!$('keyword').value.trim()) return koreanPriority(b)-koreanPriority(a)||sortVal(b,'date')-sortVal(a,'date');
+        var x=sortVal(a,currentSort),y=sortVal(b,currentSort);return isDescending?y-x:x-y;
+    });
     $('resultCount').textContent='결과: '+rawData.length+'개';
     var frag=document.createDocumentFragment();
     rawData.forEach(function(i){frag.appendChild(makeCard(i));});
@@ -385,6 +392,7 @@ function render(){
 
 async function fetchData(){
     var kw=$('keyword').value.trim();
+    if(!kw){$('apiOrder').value='date';$('apiOrder').dispatchEvent(new Event('change',{bubbles:true}));}
     var token=++searchToken;
     var btn=$('searchBtn');btn.disabled=true;
     rawData=[];

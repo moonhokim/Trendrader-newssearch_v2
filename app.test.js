@@ -512,3 +512,16 @@ test('video collects without a keyword and displays newest videos first', async 
     assert.equal(doc.querySelector('.card-title').textContent, '최신 영상');
     assert.ok(doc.querySelector('[data-sort="date"]').classList.contains('active'));
 });
+
+test('blank community searches use Korean latest even when saved conditions differ', async t => {
+    const requests = [];
+    const dom = setup(async url => {requests.push(new URL(url, 'http://localhost'));return response();}, 'http://localhost:3000', undefined, undefined, {'trend-community-filters-v1':{communityCountry:'US',communitySort:'popular'}});
+    t.after(() => dom.window.close());
+    await flush();
+    dom.window.document.querySelector('[data-view="community"]').click();
+    await flush();
+    const request = requests.filter(url => url.pathname === '/api/search').at(-1);
+    assert.equal(request.searchParams.get('q'), '');
+    assert.equal(request.searchParams.get('country'), 'KR');
+    assert.equal(request.searchParams.get('sort'), 'latest');
+});

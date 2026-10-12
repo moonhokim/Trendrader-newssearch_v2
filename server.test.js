@@ -93,7 +93,8 @@ test('YouTube search uses public search HTML without an API key', async () => {
 });
 test('YouTube uses a useful default query when the search box is empty', async () => {
     const result = await search(options(new URLSearchParams({ category: 'youtube', period: 'all' })), async url => {
-        assert.equal(url.searchParams.get('search_query'), '한국 인기 동영상');
+        assert.equal(url.searchParams.get('search_query'), '한국');
+        assert.equal(url.searchParams.get('hl'), 'ko');
         return new Response('<html><script>var ytInitialData = {"videoRenderer":{"videoId":"default123","title":{"simpleText":"인기 영상"}}};</script></html>');
     });
     assert.equal(result.items.length, 1);
