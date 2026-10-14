@@ -100,3 +100,9 @@ npx vercel --prod --yes
 글과 댓글은 GitHub `data/board.json`에 저장합니다. 운영 서버에 `BOARD_GITHUB_TOKEN`(해당 저장소 Contents 읽기/쓰기 권한), `BOARD_ADMIN_PASSWORD`, `BOARD_PASSWORD_PEPPER`(32자 이상 무작위 서버 전용 Secret)를 설정해야 합니다. 기본 저장소와 브랜치는 `BOARD_GITHUB_REPOSITORY`, `BOARD_GITHUB_BRANCH`로 변경할 수 있습니다. 공개 저장소에는 게시글·닉네임·댓글이 공개되며 삭제 전 내용은 Git 이력에 남습니다. 비밀번호는 서버 보호 키와 salted scrypt로 검증하고 공개 API에서 검증값을 제외합니다. 보호 키는 기존 글의 수정·삭제 인증에 필요하므로 보관하고 임의로 변경하지 마세요.
 
 게시판은 GitHub 저장 충돌을 재시도합니다. API 파일 크기 제한을 넘지 않도록 전체 JSON 900KB, 댓글 500개/글 한도를 적용합니다. 인증 실패와 저장 실패는 화면에 안내하며 저장 성공 전에 입력값을 지우지 않습니다. 환경변수 미설정 시 게시글을 임시 로컬 저장으로 대체하지 않습니다.
+
+## 방문자 집계
+
+네비게이션바 아래에 현재 접속과 누적 방문을 표시합니다. 현재 접속은 최근 90초 내 활성 페이지에서 갱신한 고유 브라우저 수이며, 30초마다 갱신됩니다. 누적 방문은 이 기능 적용 후 Redis에 기록된 고유 브라우저 수입니다. 같은 브라우저의 여러 탭·새로고침은 중복하지 않지만 브라우저 데이터를 삭제하거나 다른 브라우저를 사용하면 새로운 방문자로 집계됩니다. 로그인한 사람 수나 과거 방문 통계는 아닙니다.
+
+Vercel Marketplace의 Upstash Redis를 프로젝트 Production에 연결합니다. `KV_REST_API_URL`/`KV_REST_API_TOKEN`, `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`, 또는 직접 설정한 `VISITOR_REDIS_REST_URL`/`VISITOR_REDIS_REST_TOKEN`을 지원합니다. 토큰은 서버에만 저장합니다. Redis에서 원자적으로 중복 집계 방지·활성 브라우저 갱신을 실행하므로 여러 서버 인스턴스에서도 같은 결과를 사용합니다. 저장소 연결 실패 시 숫자를 임의로 표시하지 않습니다. IP 주소·브라우저 원문 식별자는 Redis에 기록하지 않습니다.

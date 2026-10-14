@@ -54,6 +54,11 @@
         <button type="button" class="workspace-tab" data-view="community" aria-controls="communityView" aria-pressed="false">커뮤니티</button>
         <button type="button" class="workspace-tab" data-view="feed" aria-controls="feedView" aria-pressed="false">피드</button>
     </nav>
+    <div class="visitor-stats" aria-label="사이트 방문 집계" title="현재 접속: 최근 90초 활성 브라우저 · 누적 방문: 이 기능 적용 후 고유 브라우저 수. 브라우저 데이터 삭제 시 새 방문자로 집계됩니다.">
+        <div><span>현재 접속자</span><strong id="onlineVisitors">—</strong></div>
+        <div><span>누적 방문자</span><strong id="totalVisitors">—</strong></div>
+        <small id="visitorStatsNote">집계 연결 확인 중</small>
+    </div>
     </div>
     <aside id="searchSidebar" aria-label="검색 및 검색 조건">
         <form id="desktopSearchForm" class="shared-search">
@@ -241,5 +246,6 @@
     <script src="content-actions.js" defer></script>
     <script src="app.js" defer></script>
     <script src="board-ui.js" defer></script>
+    <script src="visitors.js" defer></script>
 </body>
 </html>

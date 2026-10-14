@@ -7,6 +7,7 @@ import { plain, safeUrl, canonicalUrl, iso, parseNews, parseYoutubeSearch, parse
 import { regions, localizedField, rankItems, rankingNote } from './search-policy.js';
 import { collectReddit } from './reddit.js';
 import { createBoardHandler } from './board.js';
+import { createVisitorHandler } from './visitors.js';
 export { plain, safeUrl, parseNews, parseYoutubeSearch, parseTrends } from './feeds.js';
 
 const locales = { KR: ['ko', 'KR:ko'], US: ['en-US', 'US:en'], JP: ['ja', 'JP:ja'], CN: ['zh-CN', 'CN:zh-Hans'], GB: ['en-GB', 'GB:en'] };
@@ -224,6 +225,7 @@ export function createServer(fetcher = fetch, config = {}) {
     const trendPending = new Map();
     const clients = new Map();
     const now = config.now || Date.now;
+    const visitorHandler = createVisitorHandler(fetcher, now);
     const requestLimit = config.requestLimit ?? 120;
     function trends(query, record = false) {
         const now = Date.now();
@@ -260,7 +262,7 @@ export function createServer(fetcher = fetch, config = {}) {
         const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)); };
         try {
             const url = new URL(req.url, 'http://localhost');
-            if (req.method !== 'GET' && !url.pathname.startsWith('/api/board')) return send(405, { error: 'GET 요청만 지원합니다.' });
+            if (req.method !== 'GET' && !url.pathname.startsWith('/api/board') && url.pathname !== '/api/visitors') return send(405, { error: 'GET 요청만 지원합니다.' });
             if (url.pathname === '/video-search.html') {
                 res.setHeader('X-Frame-Options', 'SAMEORIGIN');
                 res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'");
@@ -279,6 +281,10 @@ export function createServer(fetcher = fetch, config = {}) {
                     res.setHeader('Retry-After', Math.max(1, Math.ceil((client.reset - time) / 1000)));
                     return send(429, { error: '분당 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.' });
                 }
+            }
+            if (url.pathname === '/api/visitors') {
+                const result = await visitorHandler(req);
+                return send(result.status, result.body);
             }
             if (url.pathname.startsWith('/api/board')) {
                 if (req.method !== 'GET') {
@@ -348,7 +354,7 @@ export function createServer(fetcher = fetch, config = {}) {
                 cache.set(key, { time: now(), data, ttl: data.statuses.every(s => s.ok) ? 60000 : 15000 });
                 return send(200, responseData(data));
             }
-            const files = { '/board-ui.js': ['board-ui.js', 'text/javascript; charset=utf-8'], '/content-actions.js': ['content-actions.js', 'text/javascript; charset=utf-8'], '/theme.js': ['theme.js', 'text/javascript; charset=utf-8'], '/video-search.html': ['video-search.html', 'text/html; charset=utf-8'], '/video-search.js': ['video-search.js', 'text/javascript; charset=utf-8'], '/video-search.css': ['video-search.css', 'text/css; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/brand/trend-radar-logo-en.png': ['brand/trend-radar-logo-en.png', 'image/png'], '/brand/trend-radar-banner-en.png': ['brand/trend-radar-banner-en.png', 'image/png'], '/reset.css': ['reset.css', 'text/css; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
+            const files = { '/visitors.js': ['visitors.js', 'text/javascript; charset=utf-8'], '/board-ui.js': ['board-ui.js', 'text/javascript; charset=utf-8'], '/content-actions.js': ['content-actions.js', 'text/javascript; charset=utf-8'], '/theme.js': ['theme.js', 'text/javascript; charset=utf-8'], '/video-search.html': ['video-search.html', 'text/html; charset=utf-8'], '/video-search.js': ['video-search.js', 'text/javascript; charset=utf-8'], '/video-search.css': ['video-search.css', 'text/css; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/index.html': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/brand/trend-radar-logo-en.png': ['brand/trend-radar-logo-en.png', 'image/png'], '/brand/trend-radar-banner-en.png': ['brand/trend-radar-banner-en.png', 'image/png'], '/reset.css': ['reset.css', 'text/css; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
             if (!Object.hasOwn(files, url.pathname)) return send(404, { error: '페이지가 없습니다.' });
             const [name, type] = files[url.pathname];
             const body = await readFile(new URL(name, root));

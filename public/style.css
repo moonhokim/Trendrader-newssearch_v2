@@ -429,3 +429,9 @@ button { font-size:clamp(12px,1vw,16px); }
 .title-button { white-space:normal; }
 .action-tooltip { overflow-wrap:anywhere; }
 .btn-search, .btn-content-action, .btn-view-original, .category-chip, .source-group-tab, .back-to-top { font-size:clamp(12px,1.1vw,16px); white-space:nowrap; }
+.visitor-stats { margin-top:auto; border-top:1px solid var(--glass-border); padding:18px 8px 8px; color:var(--text-muted); font-size:12px; }
+.visitor-stats > div { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+.visitor-stats strong { color:var(--text-main); font-size:16px; font-variant-numeric:tabular-nums; }
+.visitor-stats small { display:block; font-size:10px; line-height:1.6; }
+@media(min-width:769px) { .workspace-toolbar { display:flex; flex-direction:column; gap:24px; } }
+@media(max-width:768px) { .workspace-toolbar { flex-wrap:wrap; gap:8px; } .visitor-stats { width:100%; margin:0; padding:8px 0 0; display:flex; align-items:center; gap:16px; font-size:11px; } .visitor-stats > div { margin:0; gap:6px; } .visitor-stats strong { font-size:13px; } .visitor-stats small { margin-left:auto; max-width:100px; } }
