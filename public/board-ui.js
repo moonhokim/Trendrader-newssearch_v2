@@ -1,6 +1,6 @@
 (() => {
     const el = id => document.getElementById(id);
-    let page = 1, editing = null, deleting = null, sequence = 0;
+    let page = 1, editing = null, deleting = null, sequence = 0, openPostId = null;
     const make = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
     async function request(path, method = 'GET', data) {
         const response = await fetch('/api/board' + path, { method, headers: { 'Content-Type': 'application/json' }, ...(data ? { body: JSON.stringify(data) } : {}) });
@@ -26,6 +26,8 @@
     function renderPost(post) {
         const article = make('article', undefined, 'board-post glass');
         const details = make('details');
+        details.open = post.id === openPostId;
+        details.addEventListener('toggle', () => { if (details.isConnected && details.open) openPostId = post.id; });
         const summary = make('summary', undefined, 'board-post-heading');
         if (post.pinned) summary.append(make('span', '공지', 'board-pin'));
         summary.append(make('strong', post.title), make('span', `${post.nickname} · ${new Date(post.createdAt).toLocaleString('ko-KR')} · 댓글 ${(post.comments || []).length}`, 'source-note'));
@@ -39,6 +41,31 @@
         for (const comment of post.comments || []) {
             const card = make('article', undefined, 'board-comment');
             card.append(make('strong', comment.nickname), make('p', comment.body, 'board-body'), make('small', new Date(comment.createdAt).toLocaleString('ko-KR'), 'source-note'));
+            if (comment.authorManageable === false) card.append(make('p', '이전 댓글은 인증 정보가 없어 관리자만 수정·삭제할 수 있습니다.', 'source-note'));
+            const actions = make('div', undefined, 'content-actions');
+            function manageComment(remove) {
+                card.querySelector('.comment-manage-form')?.remove();
+                const form = make('form', undefined, 'comment-form comment-manage-form');
+                const heading = make('strong', remove ? '댓글 삭제' : '댓글 수정');
+                const body = make('textarea'); body.value = comment.body; body.maxLength = 2000; body.required = !remove; body.setAttribute('aria-label', '수정할 댓글 본문');
+                const nickname = make('input'); nickname.value = comment.nickname; nickname.required = true; nickname.maxLength = 30; nickname.setAttribute('aria-label', '댓글 관리 닉네임');
+                const password = make('input'); password.type = 'password'; password.required = true; password.minLength = 4; password.maxLength = 128; password.autocomplete = 'current-password'; password.placeholder = '작성 시 비밀번호'; password.setAttribute('aria-label', '댓글 관리 비밀번호');
+                const status = make('p', '', 'source-note'); status.setAttribute('role', 'status');
+                const submit = make('button', remove ? '삭제 확인' : '수정 저장', 'btn-search'); submit.type = 'submit';
+                form.append(heading); if (!remove) form.append(body);
+                form.append(nickname, password, submit, button('취소', () => form.remove()), status);
+                form.addEventListener('submit', async event => {
+                    event.preventDefault(); submit.disabled = true; status.textContent = remove ? '댓글 삭제 중…' : '댓글 수정 중…';
+                    try {
+                        await request(`/${post.id}/comments/${comment.id}`, remove ? 'DELETE' : 'PATCH', { nickname: nickname.value, password: password.value, ...(!remove ? { body: body.value } : {}) });
+                        password.value = ''; openPostId = post.id; await loadBoard(page);
+                    } catch (error) { status.textContent = error.message; }
+                    finally { submit.disabled = false; }
+                });
+                card.append(form); password.focus();
+            }
+            actions.append(button('댓글 수정', () => manageComment(false)), button('댓글 삭제', () => manageComment(true)));
+            card.append(actions);
             comments.append(card);
         }
         const form = make('form', undefined, 'comment-form');

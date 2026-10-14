@@ -77,3 +77,28 @@ test('board enforces pagination, origin, input limits and retries concurrent wri
     f.stored().posts.find(post => post.id === saved.body.post.id).comments = Array.from({ length: 500 }, () => ({ body: 'Comment' }));
     assert.equal((await f.call('POST', `/${saved.body.post.id}/comments`, { nickname: 'Reader', password: '1234', body: 'More' })).status, 409);
 });
+
+test('comment edits and deletes require author credentials, protect secrets and support legacy admin management', async () => {
+    process.env.BOARD_GITHUB_TOKEN='test';process.env.BOARD_PASSWORD_PEPPER='test-only-pepper-with-at-least-32-characters';process.env.BOARD_ADMIN_PASSWORD='5298';
+    const f=fixture();
+    const created=await f.call('POST','',{title:'Post',body:'Body',nickname:'Writer',password:'post-password'});
+    const id=created.body.post.id;
+    const added=await f.call('POST',`/${id}/comments`,{body:'Original',nickname:'Reader',password:'comment-password'});
+    const comment=added.body.post.comments[0], path=`/${id}/comments/${comment.id}`;
+    assert.equal(comment.authorManageable,true);assert.equal(comment.passwordHash,undefined);
+    assert.ok(f.stored().posts[0].comments[0].passwordHash);
+    assert.ok(!JSON.stringify(f.stored()).includes('comment-password'));
+    assert.equal((await f.call('PATCH',path,{body:'Changed',nickname:'Other',password:'comment-password'})).status,403);
+    assert.equal((await f.call('DELETE',path,{nickname:'Reader',password:'post-password'})).status,403);
+    const edited=await f.call('PATCH',path,{body:'Changed',nickname:'Reader',password:'comment-password'});
+    assert.equal(edited.body.post.comments[0].body,'Changed');assert.ok(edited.body.post.comments[0].updatedAt);
+    const deleted=await f.call('DELETE',path,{nickname:'Reader',password:'comment-password'});
+    assert.equal(deleted.body.post.comments.length,0);
+    f.stored().posts[0].comments.push({id:'legacy',body:'Old',nickname:'Reader',createdAt:new Date().toISOString()});
+    const legacy=`/${id}/comments/legacy`;
+    assert.equal((await f.call('GET',`/${id}`)).body.post.comments[0].authorManageable,false);
+    assert.equal((await f.call('DELETE',legacy,{nickname:'Reader',password:'comment-password'})).status,403);
+    assert.equal((await f.call('PATCH',legacy,{body:'Admin changed',nickname:'Admin',password:'5298'})).body.post.comments[0].body,'Admin changed');
+    assert.equal((await f.call('DELETE',legacy,{nickname:'Admin',password:'5298'})).body.post.comments.length,0);
+    assert.equal((await f.call('DELETE',legacy,{nickname:'Admin',password:'5298'})).status,404);
+});

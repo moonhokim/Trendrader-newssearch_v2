@@ -66,3 +66,34 @@ test('feed comment submits credentials and clears password after success without
         assert.equal(form.elements.password.value, ''); assert.equal(f.window.localStorage.length, 0);
     } finally { f.close(); }
 });
+
+test('comment edit and delete forms send author credentials and retain failed edits', async () => {
+    const comment={id:'comment-1',nickname:'Reader',body:'Comment',createdAt:sample.createdAt,authorManageable:true};
+    const f=fixture([{...sample,comments:[comment]}]);
+    try {
+        await f.window.loadBoard();
+        const doc=f.window.document;
+        const button=text=>[...doc.querySelectorAll('.board-comment button')].find(node=>node.textContent===text);
+        button('댓글 수정').click();
+        let form=doc.querySelector('.comment-manage-form');
+        form.querySelector('textarea').value='Edited comment';
+        form.querySelector('input[type="password"]').value='comment-password';
+        f.rejectEdit();
+        form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));await settle();
+        assert.equal(f.calls.at(-1).path,'/api/board/post-1/comments/comment-1');
+        assert.equal(f.calls.at(-1).method,'PATCH');
+        assert.equal(f.calls.at(-1).data.body,'Edited comment');
+        assert.equal(f.calls.at(-1).data.nickname,'Reader');
+        assert.ok(doc.querySelector('.comment-manage-form'));assert.match(form.textContent,/비밀번호/);
+        button('댓글 삭제').click();
+        form=doc.querySelector('.comment-manage-form');
+        assert.equal(form.querySelector('textarea'),null);
+        form.querySelector('input[type="password"]').value='comment-password';
+        form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));await settle();
+        const deletion=f.calls.findLast(call=>call.method==='DELETE');
+        assert.equal(deletion.path,'/api/board/post-1/comments/comment-1');
+        assert.equal(deletion.data.password,'comment-password');
+        assert.equal(f.el('boardPosts').querySelector('details').open,true);
+        assert.equal(doc.querySelector('.comment-manage-form'),null);
+    } finally {f.close();}
+});

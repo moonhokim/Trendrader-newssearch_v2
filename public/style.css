@@ -435,3 +435,4 @@ button { font-size:clamp(12px,1vw,16px); }
 .visitor-stats small { display:block; font-size:10px; line-height:1.6; }
 @media(min-width:769px) { .workspace-toolbar { display:flex; flex-direction:column; gap:24px; } }
 @media(max-width:768px) { .workspace-toolbar { flex-wrap:wrap; gap:8px; } .visitor-stats { width:100%; margin:0; padding:8px 0 0; display:flex; align-items:center; gap:16px; font-size:11px; } .visitor-stats > div { margin:0; gap:6px; } .visitor-stats strong { font-size:13px; } .visitor-stats small { margin-left:auto; max-width:100px; } }
+.comment-manage-form > strong { grid-column:1 / -1; }

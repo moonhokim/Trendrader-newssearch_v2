@@ -2,7 +2,7 @@ import { createHmac, randomBytes, randomUUID, scrypt as scryptCallback, timingSa
 import { promisify } from 'node:util';
 const scrypt = promisify(scryptCallback);
 const fail = (status, message) => Object.assign(new Error(message), { status });
-const publicPost = ({ passwordHash, passwordSalt, ...post }) => ({ ...post, comments: (post.comments || []).map(({ passwordHash, passwordSalt, ...comment }) => comment) });
+const publicPost = ({ passwordHash, passwordSalt, ...post }) => ({ ...post, comments: (post.comments || []).map(({ passwordHash, passwordSalt, ...comment }) => ({ ...comment, authorManageable: Boolean(passwordHash && passwordSalt) })) });
 function text(value, name, max, min = 1) {
     if (typeof value !== 'string' || value.trim().length < min || value.trim().length > max) throw fail(400, `${name} 입력을 확인하세요. (${min}~${max}자)`);
     return value.trim();
@@ -46,9 +46,9 @@ export function createBoardHandler(fetcher = fetch) {
                 if (!Array.isArray(data.posts)) throw fail(503, '피드 저장소 형식을 확인하세요.');
                 return { posts: data.posts, sha: file.sha };
             };
-            const match = /^\/api\/board(?:\/([a-zA-Z0-9-]+)(?:\/(comments))?)?\/?$/.exec(url.pathname);
+            const match = /^\/api\/board(?:\/([a-zA-Z0-9-]+)(?:\/(comments)(?:\/([a-zA-Z0-9-]+))?)?)?\/?$/.exec(url.pathname);
             if (!match) throw fail(404, '게시판 경로를 확인하세요.');
-            const [, id, commentsPath] = match;
+            const [, id, commentsPath, commentId] = match;
             if (req.method === 'GET') {
                 const { posts } = await read();
                 if (id) { const post = posts.find(p => p.id === id); if (!post) throw fail(404, '게시글을 찾을 수 없습니다.'); return { status: 200, body: { post: publicPost(post) } }; }
@@ -80,9 +80,20 @@ export function createBoardHandler(fetcher = fetch) {
                 } else {
                     const index = posts.findIndex(p => p.id === id); if (index < 0) throw fail(404, '게시글을 찾을 수 없습니다.');
                     const post = posts[index];
-                    if (req.method === 'POST' && commentsPath) {
+                    if (req.method === 'POST' && commentsPath && !commentId) {
                         if (post.comments.length >= 500) throw fail(409, '댓글 수가 최대치에 도달했습니다.');
-                        post.comments.push({ id: newId, ...content, nickname, createdAt: now }); result = post;
+                        post.comments.push({ id: newId, ...content, nickname, passwordHash, passwordSalt: salt, createdAt: now, updatedAt: now }); result = post;
+                    } else if (commentId && ['PATCH', 'DELETE'].includes(req.method)) {
+                        const commentIndex = post.comments.findIndex(comment => comment.id === commentId);
+                        if (commentIndex < 0) throw fail(404, '댓글을 찾을 수 없습니다.');
+                        const comment = post.comments[commentIndex];
+                        if (!admin) {
+                            if (!comment.passwordHash || !comment.passwordSalt) throw fail(403, '이전 댓글은 비밀번호 검증 정보가 없어 관리자만 수정·삭제할 수 있습니다.');
+                            if (nickname !== comment.nickname || !same(await hash(password, comment.passwordSalt), comment.passwordHash)) throw fail(403, '닉네임 또는 비밀번호가 일치하지 않습니다.');
+                        }
+                        if (req.method === 'DELETE') post.comments.splice(commentIndex, 1);
+                        else Object.assign(comment, content, { updatedAt: now });
+                        result = post;
                     } else if (!commentsPath && ['PATCH', 'DELETE'].includes(req.method)) {
                         if (!admin && (nickname !== post.nickname || !same(await hash(password, post.passwordSalt), post.passwordHash))) throw fail(403, '닉네임 또는 비밀번호가 일치하지 않습니다.');
                         if (req.method === 'DELETE') { posts.splice(index, 1); result = null; }
