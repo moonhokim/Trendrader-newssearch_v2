@@ -640,3 +640,23 @@ test('action explanations are available on pointer, keyboard focus and mobile to
     dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
     assert.equal(tip.hidden,true);
 });
+
+test('embedded video tooltips appear in the host viewport and hide on exit', async t => {
+    const dom=new JSDOM('<iframe></iframe>',{url:'https://example.com',runScripts:'outside-only'});
+    t.after(()=>dom.window.close());
+    const script=await readFile(new URL('./public/content-actions.js',import.meta.url),'utf8');
+    dom.window.eval(script);
+    const frame=dom.window.document.querySelector('iframe').contentWindow;
+    frame.document.body.innerHTML='<button>AI기획</button><button data-tooltip="게시 시각이 최신인 영상부터 정렬">최신</button>';
+    frame.eval(script);
+    const buttons=frame.document.querySelectorAll('button');
+    buttons[0].dispatchEvent(new frame.Event('pointerover',{bubbles:true}));
+    const tip=dom.window.document.getElementById('actionTooltip');
+    assert.equal(tip.hidden,false);assert.match(tip.textContent,/벤치마킹/);
+    assert.equal(frame.document.getElementById('actionTooltip'),null);
+    buttons[1].dispatchEvent(new frame.Event('focusin',{bubbles:true}));
+    assert.equal(tip.textContent,'게시 시각이 최신인 영상부터 정렬');
+    assert.equal(buttons[1].getAttribute('aria-description'),tip.textContent);
+    buttons[1].dispatchEvent(new frame.Event('pointerout',{bubbles:true}));
+    assert.equal(tip.hidden,true);
+});

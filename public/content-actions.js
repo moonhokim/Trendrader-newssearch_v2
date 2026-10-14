@@ -30,17 +30,29 @@
         await copying;
         return opened ? 'URL을 복사했습니다. Grok에서 로그인 후 붙여넣어 요약을 요청하세요.' : 'URL을 복사했습니다. 팝업을 허용한 뒤 AI요약하기를 다시 누르세요.';
     }
-    window.TrendContentActions = { copy, summarize };
+    window.TrendContentActions = { copy, summarize, showTip, hideTip };
     const descriptions = { '링크복사': 'URL 복사하기', 'URL복사': 'URL 복사하기', 'AI요약하기': 'GROK AI에 복사된 링크를 붙여넣어 내용 요약', '🤖 AI 기획': '영상 벤치마킹 프롬프트 생성 및 복사', 'AI기획': '영상 벤치마킹 프롬프트 생성 및 복사' };
     let tip, lastButton, timer;
-    function hideTip() { if (tip) tip.hidden = true; if (lastButton) lastButton.removeAttribute('aria-describedby'); }
+    function hostActions() {
+        try { if (window.parent !== window) return window.parent.TrendContentActions; } catch { /* Standalone or cross-origin frame. */ }
+    }
+    function hideTip() {
+        const host = hostActions();
+        if (host?.hideTip) { host.hideTip(); return; }
+        if (tip) tip.hidden = true;
+        if (lastButton) { lastButton.removeAttribute('aria-describedby'); lastButton.removeAttribute('aria-description'); }
+    }
     function showTip(event) {
+        const host = hostActions();
+        if (host?.showTip) { host.showTip(event); return; }
         const button = event.target.closest?.('button');
-        const description = button && descriptions[button.textContent.trim()];
+        const description = button && (button.dataset.tooltip || descriptions[button.textContent.trim()]);
         if (!description) { hideTip(); return; }
         clearTimeout(timer); hideTip();
         if (!tip) { tip = document.createElement('div'); tip.id = 'actionTooltip'; tip.className = 'action-tooltip'; tip.setAttribute('role', 'tooltip'); document.body.append(tip); }
-        lastButton = button; button.setAttribute('aria-describedby', tip.id);
+        lastButton = button;
+        if (button.ownerDocument === document) button.setAttribute('aria-describedby', tip.id);
+        else button.setAttribute('aria-description', description);
         tip.textContent = description; tip.hidden = false;
         timer = setTimeout(hideTip, 6000);
     }

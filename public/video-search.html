@@ -41,16 +41,16 @@
 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span style="font-size:13px;font-weight:bold">재정렬:</span>
     <div class="sort-options">
-        <button class="sort-btn active" data-sort="viewCount">조회수</button>
-        <button class="sort-btn" data-sort="subCount">구독자</button>
-        <button class="sort-btn" data-sort="viralScore">🔥 떡상지수</button>
-        <button class="sort-btn" data-sort="date">최신</button>
+        <button class="sort-btn active" data-sort="viewCount" data-tooltip="수집된 영상을 조회수 기준으로 정렬">조회수</button>
+        <button class="sort-btn" data-sort="subCount" data-tooltip="채널 구독자 수 기준으로 정렬">구독자</button>
+        <button class="sort-btn" data-sort="viralScore" data-tooltip="조회수 대비 구독자 수로 계산한 성과 지수 기준으로 정렬">🔥 떡상지수</button>
+        <button class="sort-btn" data-sort="date" data-tooltip="게시 시각이 최신인 영상부터 정렬">최신</button>
     </div>
 </div>
 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span id="backendBadge" class="status-badge">백엔드: -</span>
     <span id="resultCount" style="font-size:13px;color:var(--sub)">대기 중...</span>
-    <span id="orderToggle" style="cursor:pointer;font-size:18px">⬇️</span>
+    <button type="button" id="orderToggle" data-tooltip="정렬 방향을 오름차순 또는 내림차순으로 전환">⬇️</button>
 </div>
 </div>
 <div id="resultsArea" class="card-container">
