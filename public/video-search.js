@@ -31,6 +31,19 @@ function cpTxt(t,m){
         navigator.clipboard.writeText(t).then(function(){showToast(m||'복사됨');},function(){fallbackCopy(t,m);});
     }else fallbackCopy(t,m);
 }
+function contentActions(){
+    try { if(window.parent!==window && window.parent.TrendContentActions)return window.parent.TrendContentActions; } catch(e){}
+    return window.TrendContentActions;
+}
+async function copyVideoLink(url,summarize){
+    try { if(summarize)showToast(await contentActions().summarize(url));else {await contentActions().copy(url);showToast('링크를 복사했습니다.');} }
+    catch(e){showToast(e.message);}
+}
+function notifySearch(busy){
+    $('searchBtn').textContent=busy?'검색 중…':'검색';
+    $('searchBtn').setAttribute('aria-busy',String(busy));
+    try { if(window.parent!==window){window.parent.setWorkspaceSearchBusy?.('video',busy);if(busy)window.parent.scrollResultsToTop?.();} } catch(e){}
+}
 function fallbackCopy(t,m){var ta=h('textarea',{style:'position:fixed;opacity:0'});ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');showToast(m||'복사됨');}catch(e){showToast('복사 실패');}ta.remove();}
 function pad(n){return String(n).padStart(2,'0');}
 function fmtDur(s){s=s||0;var hh=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return hh>0?hh+':'+pad(m)+':'+pad(sc):m+':'+pad(sc);}
@@ -368,7 +381,8 @@ function makeCard(i){
                 h('div',{class:'stat-row'},h('span',{},'구독자'),h('span',{class:'stat-val'},i.subCount>0?fmtNum(i.subCount):'-')),
                 h('div',{class:'stat-row'},h('span',{},'기여도'),h('span',{class:'stat-val',style:'color:var(--blue)'},v===null?'-':Math.round(v).toLocaleString()+'%'))),
             h('div',{class:'action-row'},
-                h('button',{class:'copy-btn',onclick:function(){cpTxt(i.title,'제목 복사됨');}},'제목 복사'),
+                h('button',{class:'copy-btn',onclick:function(){copyVideoLink(url,false);}},'링크복사'),
+                h('button',{class:'summary-btn',onclick:function(){copyVideoLink(url,true);}},'AI요약하기'),
                 h('button',{class:'ai-btn',onclick:function(){cpTxt(buildPrompt(i),'AI 기획안 복사됨!');}},'🤖 AI 기획'))));
 }
 
@@ -396,6 +410,7 @@ async function fetchData(){
     var kw=[enteredQuery,field&&field!==enteredQuery?field:''].filter(Boolean).join(' ');
     if(!enteredQuery){$('apiOrder').value='date';$('apiOrder').dispatchEvent(new Event('change',{bubbles:true}));}
     var token=++searchToken;
+    notifySearch(true);
     var btn=$('searchBtn');btn.disabled=true;
     rawData=[];
     var area=$('resultsArea');area.textContent='';
@@ -450,7 +465,7 @@ async function fetchData(){
         $('resultCount').textContent='오류 발생';
         $('backendBadge').textContent='백엔드: 실패';
     }finally{
-        if(token===searchToken)btn.disabled=false;
+        if(token===searchToken){btn.disabled=false;notifySearch(false);}
     }
 }
 

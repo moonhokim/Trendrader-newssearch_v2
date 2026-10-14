@@ -20,7 +20,7 @@
       "dest": "/public/brand/$1"
     },
     {
-      "src": "/(app\\.js|theme\\.js|style\\.css|reset\\.css|video-search\\.(?:html|js|css))",
+      "src": "/(content-actions\\.js|app\\.js|theme\\.js|style\\.css|reset\\.css|video-search\\.(?:html|js|css))",
       "dest": "/public/$1"
     },
     {

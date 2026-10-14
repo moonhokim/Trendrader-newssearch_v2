@@ -1,4 +1,32 @@
 const $ = id => document.getElementById(id);
+const searchBusy = { information: false, video: false, community: false };
+function setWorkspaceSearchBusy(view, busy) {
+    searchBusy[view] = busy;
+    const selected = document.querySelector('.workspace-tab.active')?.dataset.view || 'information';
+    document.querySelectorAll('.shared-search button[type="submit"]').forEach(button => {
+        button.textContent = searchBusy[selected] ? '검색 중…' : '검색';
+        button.setAttribute('aria-busy', String(searchBusy[selected]));
+    });
+}
+function scrollResultsToTop() {
+    $('resultViewport').scrollTo?.({ top: 0, behavior: 'instant' });
+    if (window.matchMedia?.('(max-width: 768px)').matches) $('resultViewport').scrollIntoView?.({ block: 'start', behavior: 'instant' });
+}
+function contentButton(text, url, summarize = false) {
+    const button = node('button', 'btn-content-action', text);
+    button.type = 'button';
+    button.addEventListener('click', async event => {
+        event.stopPropagation();
+        let feedback = button.parentElement.querySelector('.content-action-feedback');
+        if (!feedback) { feedback = node('p', 'content-action-feedback'); feedback.setAttribute('role', 'status'); button.parentElement.append(feedback); }
+        try {
+            if (summarize) $('actionStatus').textContent = await window.TrendContentActions.summarize(url);
+            else { await window.TrendContentActions.copy(url); $('actionStatus').textContent = '링크를 복사했습니다.'; }
+        } catch (error) { $('actionStatus').textContent = error.message; }
+        feedback.textContent = $('actionStatus').textContent;
+    });
+    return button;
+}
 const labels = { news: '뉴스', youtube: 'YouTube', github: 'GitHub', blog: '블로그', reddit: '커뮤니티', humor: '유머게시판' };
 const providerLabels = { ...labels, reddit: 'Reddit', news: 'Google 뉴스', newsBbc: 'BBC News', newsGuardian: 'The Guardian', newsTechCrunch: 'TechCrunch', newsScience: 'ScienceDaily', communityGeek: 'GeekNews', blogGithub: 'GitHub Blog', blogNaver: '네이버 블로그', blogDaum: '다음 블로그', blogTistory: '티스토리', blogDev: 'DEV 블로그', blogYozm: '요즘IT', blogMedium: 'Medium', blogWordPress: 'WordPress', humorPpomppu: '뽐뿌 유머/감동', humorToday: '오늘의유머', humorDc: '디시인사이드', humor9gag: '9GAG', humorBoredPanda: 'Bored Panda' };
 Object.assign(providerLabels, { blogNote: 'note (일본)', blogHatena: 'はてなブログ (일본)', blogCsdn: 'CSDN (중국)', blogCnblogs: '博客园 (중국)' });
@@ -58,7 +86,9 @@ function render(items) {
         const title = node('button', 'card-title title-button', item.title);
         title.addEventListener('click', () => detail(item));
         const footer = node('div', 'card-footer');
-        footer.append(node('span', 'metrics-group', (item.metrics || []).join(' · ') || '조회수·반응 수 미제공'), link(item));
+        const actions = node('div', 'content-actions');
+        actions.append(contentButton('링크복사', item.url), contentButton('AI요약하기', item.url, true));
+        footer.append(actions, link(item));
         if (item.thumbnail && /^https?:\/\//i.test(item.thumbnail)) {
             const thumbnail = node('img', 'card-thumbnail', '');
             thumbnail.src = item.thumbnail;
@@ -144,6 +174,8 @@ function updateResultSummary(items, statuses = []) {
     $('resultSummary').textContent = `${items.length}건 · ${groups.size}개 소스 그룹${failed ? ` · ${failed}개 출처 부분 실패` : ''}`;
 }
 async function handleSearch(record = false) {
+    setWorkspaceSearchBusy('information', true);
+    scrollResultsToTop();
     clearTimeout(timer);
     controller?.abort();
     controller = new AbortController();
@@ -196,6 +228,7 @@ async function handleSearch(record = false) {
     } finally {
         clearTimeout(timeout);
         if (requestId === sequence) {
+            setWorkspaceSearchBusy('information', false);
             $('searchBtn').textContent = '실시간 검색';
             $('feedList').setAttribute('aria-busy', 'false');
             if ($('autoRefresh').checked && location.protocol !== 'file:') timer = setTimeout(() => { if (!document.hidden) handleSearch(); }, 60000);
@@ -421,6 +454,7 @@ $('mobileSearchDialog').addEventListener('close', () => {
     if (bottomDestination === 'search') setBottomNav(!$('exploreView').hidden ? 'explore' : !$('statusView').hidden ? 'status' : 'home');
 });
 function syncQuery(value) {
+    scrollResultsToTop();
     for (const id of ['searchInput', 'communityQuery', 'sharedQuery', 'mobileQuery']) $(id).value = value;
     const keyword = $('videoSearchFrame').contentDocument?.getElementById('keyword');
     if (keyword) keyword.value = value;
@@ -489,6 +523,7 @@ function switchView(view, autoCollect = true) {
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', String(active));
     });
+    setWorkspaceSearchBusy(view, searchBusy[view]);
     document.querySelector('.bottom-nav').hidden = false;
     $('mobileSearchTitle').textContent = `${{ information: '정보', video: '영상', community: '커뮤니티' }[view]} 검색`;
     if (view === 'video' && !$('videoSearchFrame').getAttribute('src')) $('videoSearchFrame').src = $('videoSearchFrame').dataset.src;
@@ -542,6 +577,8 @@ function saveInformationFilters() {
 }
 $('communityForm').addEventListener('submit', async event => {
     event.preventDefault();
+    setWorkspaceSearchBusy('community', true);
+    scrollResultsToTop();
     communityInitialized = true;
     if (!$('communityQuery').value.trim()) {
         $('communitySort').value = 'latest';
@@ -579,6 +616,6 @@ $('communityForm').addEventListener('submit', async event => {
         $('communityStatus').textContent = error.name === 'AbortError' ? '검색 시간이 초과되었습니다. 다시 검색하세요.' : error.message;
     } finally {
         clearTimeout(timeout);
-        if (request === communitySequence) $('communityResults').setAttribute('aria-busy', 'false');
+        if (request === communitySequence) { $('communityResults').setAttribute('aria-busy', 'false'); setWorkspaceSearchBusy('community', false); }
     }
 });

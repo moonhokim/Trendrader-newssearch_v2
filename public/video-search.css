@@ -115,3 +115,6 @@ body { font-size:14px; line-height:1.6; }
 .card-title { font-size:16px; line-height:1.6; }
 .fl { font-size:12px; letter-spacing:0; }
 .embedded-search .settings { margin-bottom:16px; }
+.action-row { flex-wrap:wrap; gap:8px; }
+.action-row .copy-btn, .action-row .summary-btn { flex:1; min-height:42px; font-size:13px; }
+.summary-btn { background:var(--panel); color:var(--blue); border:1px solid var(--border); }

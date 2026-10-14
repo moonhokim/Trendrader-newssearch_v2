@@ -562,3 +562,62 @@ test('information field is shared with video and community, and fresh scope defa
     await flush();
     assert.equal(frame.contentDocument.getElementById('keyword').dataset.searchField,'경제');
 });
+
+test('content URL copying and Grok launch reuse the same project window and reject unsafe URLs', async t => {
+    const dom = new JSDOM('<body></body>', {url:'https://example.com',runScripts:'outside-only'});
+    t.after(() => dom.window.close());
+    const copied=[];const opened=[];let focused=0;
+    Object.defineProperty(dom.window.navigator,'clipboard',{value:{writeText:async value=>copied.push(value)}});
+    const popup={closed:false,focus(){focused++;}};
+    dom.window.open=(url,name)=>{opened.push({url,name});return popup;};
+    dom.window.eval(await readFile(new URL('./public/content-actions.js',import.meta.url),'utf8'));
+    await dom.window.TrendContentActions.copy(item.url);
+    await dom.window.TrendContentActions.summarize(item.url);
+    await dom.window.TrendContentActions.summarize('https://www.youtube.com/watch?v=abcdefghijk');
+    assert.equal(copied[0],item.url);
+    assert.equal(opened.length,1);
+    assert.equal(opened[0].url,'https://grok.com/project/00d49a5c-655b-47d7-b477-9a07ec8e901b?tab=conversations');
+    assert.equal(popup.opener,null);
+    assert.equal(focused,2);
+    await assert.rejects(dom.window.TrendContentActions.summarize('javascript:alert(1)'));
+    popup.closed=true;
+    await dom.window.TrendContentActions.summarize(item.url);
+    assert.equal(opened.length,2);
+});
+
+test('visible search buttons track pending searches and typing or searching resets results to top', async t => {
+    const pending=[];
+    const dom=setup(url=>url.startsWith('/api/trends')?Promise.resolve(response()):new Promise(resolve=>pending.push(resolve)));
+    t.after(()=>dom.window.close());
+    const doc=dom.window.document;
+    assert.equal(doc.querySelector('#desktopSearchForm button').textContent,'검색 중…');
+    pending.shift()(response());await flush();
+    assert.equal(doc.querySelector('#desktopSearchForm button').textContent,'검색');
+    let scrolls=0;doc.getElementById('resultViewport').scrollTo=options=>{assert.equal(options.top,0);scrolls++;};
+    const input=doc.getElementById('sharedQuery');input.value='AI';input.dispatchEvent(new dom.window.Event('input'));
+    assert.equal(scrolls,1);
+    doc.getElementById('desktopSearchForm').dispatchEvent(new dom.window.Event('submit',{cancelable:true}));
+    assert.equal(doc.querySelector('#mobileSearchForm button').textContent,'검색 중…');
+    pending.shift()(response());await flush();
+    assert.equal(doc.querySelector('#mobileSearchForm button').textContent,'검색');
+    assert.ok(scrolls>=2);
+    const actions=doc.querySelectorAll('#feedList .btn-content-action');
+    assert.deepEqual(Array.from(actions,button=>button.textContent),['링크복사','AI요약하기']);
+    let url;
+    dom.window.TrendContentActions={copy:async value=>{url=value;},summarize:async value=>{url=value;return 'Grok 프로젝트';}};
+    actions[0].click();await flush();assert.equal(url,item.url);
+    actions[1].click();await flush();assert.equal(doc.getElementById('actionStatus').textContent,'Grok 프로젝트');
+});
+
+test('video card copies the URL and offers Grok summary next to link copy', async t => {
+    const dom=new JSDOM(await readFile(new URL('./public/video-search.html',import.meta.url),'utf8'),{url:'http://localhost/video-search.html',runScripts:'outside-only'});
+    t.after(()=>dom.window.close());
+    const calls=[];
+    dom.window.TrendContentActions={copy:async url=>calls.push(['copy',url]),summarize:async url=>{calls.push(['summary',url]);return 'Grok 열기';}};
+    dom.window.eval(await readFile(new URL('./public/video-search.js',import.meta.url),'utf8'));
+    const card=dom.window.makeCard({id:'abcdefghijk',platform:'youtube',title:'테스트',channelTitle:'채널',publishedAt:new dom.window.Date(),sec:60,viewCount:1,subCount:null});
+    dom.window.document.body.append(card);
+    card.querySelector('.copy-btn').click();await flush();
+    card.querySelector('.summary-btn').click();await flush();
+    assert.deepEqual(calls,[['copy','https://www.youtube.com/watch?v=abcdefghijk'],['summary','https://www.youtube.com/watch?v=abcdefghijk']]);
+});

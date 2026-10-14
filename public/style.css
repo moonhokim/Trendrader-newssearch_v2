@@ -386,3 +386,12 @@ body:has(#mobileSearchDialog[open]) { overflow:hidden; }
     header .brand { padding:12px 8px; }
 }
 #communityResultStatus { margin-bottom:20px; padding:12px 16px; border:1px solid var(--glass-border); border-radius:8px; background:var(--glass-bg); }
+.content-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.card-footer { flex-wrap:wrap; }
+.content-actions .btn-view-original { min-height:42px; font-size:13px; }
+.content-actions .btn-view-original:last-child { border-color:#547c9e; color:var(--primary); }
+.shared-search button[aria-busy="true"] { opacity:.8; }
+.btn-content-action { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:8px 12px; color:var(--text-main); background:var(--glass-bg); border:1px solid var(--glass-border); border-radius:7px; font-size:13px; }
+.btn-content-action:hover { border-color:var(--primary); }
+.content-actions .btn-content-action:last-child { border-color:#547c9e; color:var(--primary); }
+.content-action-feedback { flex-basis:100%; font-size:12px; color:var(--secondary); line-height:1.6; }
