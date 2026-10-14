@@ -93,7 +93,9 @@ export function createBoardHandler(fetcher = fetch) {
                 if (serialized.length > 900000) throw fail(409, '게시판 저장 용량이 가득 찼습니다. 관리자에게 문의하세요.');
                 const saved = await request('PUT', { message: `Save feed ${req.method.toLowerCase()}`, branch, ...(sha ? { sha } : {}), content: serialized.toString('base64') });
                 if (saved.ok) return { status: req.method === 'POST' ? 201 : 200, body: { ...(result ? { post: publicPost(result) } : { deleted: true }) } };
-                if (![409, 422].includes(saved.status)) throw fail(503, '피드를 저장하지 못했습니다. 잠시 후 다시 시도하세요.');
+                if (saved.status === 401) throw fail(503, 'GitHub 인증이 만료되었거나 올바르지 않습니다. 게시판 토큰을 확인하세요.');
+                if (saved.status === 403 || saved.status === 404) throw fail(503, `GitHub 저장 요청이 거절되었습니다 (${saved.status}). 지정 저장소의 Contents 쓰기 권한과 브랜치 접근 권한을 확인하세요.`);
+                if (![409, 422].includes(saved.status)) throw fail(503, `GitHub 저장 오류 (${saved.status}). 잠시 후 다시 시도하세요.`);
             }
             throw fail(409, '다른 작성자가 저장 중입니다. 다시 시도하세요.');
         } catch (error) { return { status: error.status || 503, body: { error: error.status ? error.message : '피드 연결에 실패했습니다. 잠시 후 다시 시도하세요.' } }; }
