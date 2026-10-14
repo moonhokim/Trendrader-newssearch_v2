@@ -602,7 +602,7 @@ test('visible search buttons track pending searches and typing or searching rese
     assert.equal(doc.querySelector('#mobileSearchForm button').textContent,'검색');
     assert.ok(scrolls>=2);
     const actions=doc.querySelectorAll('#feedList .btn-content-action');
-    assert.deepEqual(Array.from(actions,button=>button.textContent),['링크복사','AI요약하기']);
+    assert.deepEqual(Array.from(actions,button=>button.textContent),['URL복사','AI요약하기']);
     let url;
     dom.window.TrendContentActions={copy:async value=>{url=value;},summarize:async value=>{url=value;return 'Grok 프로젝트';}};
     actions[0].click();await flush();assert.equal(url,item.url);
@@ -620,4 +620,23 @@ test('video card copies the URL and offers Grok summary next to link copy', asyn
     card.querySelector('.copy-btn').click();await flush();
     card.querySelector('.summary-btn').click();await flush();
     assert.deepEqual(calls,[['copy','https://www.youtube.com/watch?v=abcdefghijk'],['summary','https://www.youtube.com/watch?v=abcdefghijk']]);
+});
+
+test('action explanations are available on pointer, keyboard focus and mobile touch without blocking clicks', async t => {
+    const dom=new JSDOM('<button>URL복사</button><button>AI요약하기</button><button>AI기획</button>',{url:'https://example.com',runScripts:'outside-only'});
+    t.after(()=>dom.window.close());
+    dom.window.eval(await readFile(new URL('./public/content-actions.js',import.meta.url),'utf8'));
+    const buttons=dom.window.document.querySelectorAll('button');
+    buttons[0].dispatchEvent(new dom.window.Event('pointerover',{bubbles:true}));
+    const tip=dom.window.document.getElementById('actionTooltip');
+    assert.equal(tip.textContent,'URL 복사하기');
+    buttons[1].dispatchEvent(new dom.window.Event('focusin',{bubbles:true}));
+    assert.match(tip.textContent,/GROK AI/);
+    const touch=new dom.window.Event('pointerdown',{bubbles:true});Object.defineProperty(touch,'pointerType',{value:'touch'});
+    buttons[2].dispatchEvent(touch);
+    assert.equal(tip.hidden,false);
+    assert.match(tip.textContent,/벤치마킹/);
+    let clicks=0;buttons[2].addEventListener('click',()=>clicks++);buttons[2].click();assert.equal(clicks,1);
+    dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    assert.equal(tip.hidden,true);
 });

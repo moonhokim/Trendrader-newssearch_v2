@@ -118,3 +118,7 @@ body { font-size:14px; line-height:1.6; }
 .action-row { flex-wrap:wrap; gap:8px; }
 .action-row .copy-btn, .action-row .summary-btn { flex:1; min-height:42px; font-size:13px; }
 .summary-btn { background:var(--panel); color:var(--blue); border:1px solid var(--border); }
+.action-row button { white-space:nowrap; font-size:clamp(12px,1vw,14px); flex:1 1 100px; }
+.action-tooltip { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:10000; width:max-content; max-width:calc(100vw - 32px); padding:12px 16px; background:var(--panel); color:var(--text); border:1px solid var(--blue); border-radius:10px; box-shadow:0 8px 30px #0005; font-size:13px; line-height:1.6; pointer-events:none; }
+.action-tooltip[hidden] { display:none; }
+.action-row .copy-btn, .action-row .summary-btn, .action-row .ai-btn { font-size:clamp(12px,1.1vw,14px); white-space:nowrap; }

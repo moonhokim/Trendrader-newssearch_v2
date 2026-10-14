@@ -87,7 +87,7 @@ function render(items) {
         title.addEventListener('click', () => detail(item));
         const footer = node('div', 'card-footer');
         const actions = node('div', 'content-actions');
-        actions.append(contentButton('링크복사', item.url), contentButton('AI요약하기', item.url, true));
+        actions.append(contentButton('URL복사', item.url), contentButton('AI요약하기', item.url, true));
         footer.append(actions, link(item));
         if (item.thumbnail && /^https?:\/\//i.test(item.thumbnail)) {
             const thumbnail = node('img', 'card-thumbnail', '');
@@ -306,7 +306,7 @@ restoreState();
 $('backToTop').addEventListener('click', () => {
     $('resultViewport').scrollTo?.({ top: 0, behavior: 'smooth' });
     window.scrollTo({ top: 0, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-    (!$('exploreView').hidden ? $('exploreHeading') : !$('statusView').hidden ? $('statusHeading') : activeView === 'information' ? $('trendHomeTitle') : $(activeView === 'video' ? 'videoHeading' : 'communityHeading')).focus({ preventScroll: true });
+    (!$('exploreView').hidden ? $('exploreHeading') : !$('statusView').hidden ? $('statusHeading') : activeView === 'feed' ? $('feedHeading') : activeView === 'information' ? $('trendHomeTitle') : $(activeView === 'video' ? 'videoHeading' : 'communityHeading')).focus({ preventScroll: true });
 });
 $('mobileStatusLink').addEventListener('click', event => {
     event.preventDefault();
@@ -345,6 +345,7 @@ let activeView = 'information';
 const searchControls = {
     information: document.querySelector('#informationView > .search-section'),
     community: document.querySelector('#communityView > .search-section'),
+    feed: node('section', 'search-section glass'),
     video: node('section', 'search-section glass video-options')
 };
 const videoFilterDefinitions = [
@@ -356,6 +357,7 @@ const videoFilterDefinitions = [
     ['apiPages', '수집 범위', [['1', '약 20개'], ['2', '약 40개'], ['3', '약 60개'], ['5', '약 100개']], '2'],
     ['apiSubs', '채널 구독자 정보', [['1', '조회 (인사이트 계산)'], ['0', '조회 안 함 (빠른 검색)']], '1']
 ];
+searchControls.feed.append(node('h2', '', '피드 게시판'), node('p', 'source-note', '닉네임과 비밀번호로 글을 작성하고 관리하세요. 관리자 글은 상단에 고정됩니다. 한 페이지에 최대 50개 글을 표시합니다.'));
 searchControls.video.append(node('h2', '', '영상 검색 조건'));
 let savedVideoFilters = {};
 try { savedVideoFilters = JSON.parse(localStorage.getItem('trend-video-filters-v1')) || {}; } catch { /* Storage is optional. */ }
@@ -426,7 +428,7 @@ function refreshStatusView() {
 }
 function showUtilityView(destination) {
     if ($('mobileSearchDialog').open) $('mobileSearchDialog').close();
-    for (const view of ['information', 'video', 'community']) $(view + 'View').hidden = true;
+    for (const view of ['information', 'video', 'community', 'feed']) $(view + 'View').hidden = true;
     $('exploreView').hidden = destination !== 'explore';
     $('statusView').hidden = destination !== 'status';
     setBottomNav(destination);
@@ -465,6 +467,7 @@ function syncSearchField() {
     if (keyword) keyword.dataset.searchField = field;
 }
 function submitActiveSearch() {
+    if (activeView === 'feed') switchView('information', false);
     switchView(activeView, false);
     if (activeView === 'information') handleSearch(true);
     else if (activeView === 'community') $('communityForm').requestSubmit();
@@ -496,6 +499,7 @@ for (const id of ['desktopSearchForm', 'mobileSearchForm']) {
     });
 }
 $('openMobileSearch').addEventListener('click', () => {
+    if (activeView === 'feed') switchView('information', false);
     setBottomNav('search');
     $('mobileSearchDialog').showModal();
     $('mobileQuery').focus();
@@ -516,8 +520,9 @@ function switchView(view, autoCollect = true) {
     $('statusView').hidden = true;
     setBottomNav('home');
     activeView = view;
+    $('desktopSearchForm').hidden = view === 'feed';
     placeSearchControls();
-    for (const name of ['information', 'video', 'community']) $(name + 'View').hidden = name !== view;
+    for (const name of ['information', 'video', 'community', 'feed']) $(name + 'View').hidden = name !== view;
     document.querySelectorAll('.workspace-tab').forEach(button => {
         const active = button.dataset.view === view;
         button.classList.toggle('active', active);
@@ -525,7 +530,8 @@ function switchView(view, autoCollect = true) {
     });
     setWorkspaceSearchBusy(view, searchBusy[view]);
     document.querySelector('.bottom-nav').hidden = false;
-    $('mobileSearchTitle').textContent = `${{ information: '정보', video: '영상', community: '커뮤니티' }[view]} 검색`;
+    $('mobileSearchTitle').textContent = `${{ information: '정보', video: '영상', community: '커뮤니티', feed: '정보' }[view]} 검색`;
+    if (view === 'feed') window.loadBoard?.();
     if (view === 'video' && !$('videoSearchFrame').getAttribute('src')) $('videoSearchFrame').src = $('videoSearchFrame').dataset.src;
     if (autoCollect && (view !== previousView || (view === 'community' && !communityInitialized))) {
         if (view === 'information') handleSearch();

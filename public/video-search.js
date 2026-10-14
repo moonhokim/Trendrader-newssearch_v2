@@ -381,9 +381,9 @@ function makeCard(i){
                 h('div',{class:'stat-row'},h('span',{},'구독자'),h('span',{class:'stat-val'},i.subCount>0?fmtNum(i.subCount):'-')),
                 h('div',{class:'stat-row'},h('span',{},'기여도'),h('span',{class:'stat-val',style:'color:var(--blue)'},v===null?'-':Math.round(v).toLocaleString()+'%'))),
             h('div',{class:'action-row'},
-                h('button',{class:'copy-btn',onclick:function(){copyVideoLink(url,false);}},'링크복사'),
+                h('button',{class:'copy-btn',onclick:function(){copyVideoLink(url,false);}},'URL복사'),
                 h('button',{class:'summary-btn',onclick:function(){copyVideoLink(url,true);}},'AI요약하기'),
-                h('button',{class:'ai-btn',onclick:function(){cpTxt(buildPrompt(i),'AI 기획안 복사됨!');}},'🤖 AI 기획'))));
+                h('button',{class:'ai-btn',onclick:function(){cpTxt(buildPrompt(i),'AI 기획안 복사됨!');}},'AI기획'))));
 }
 
 function koreanPriority(item){

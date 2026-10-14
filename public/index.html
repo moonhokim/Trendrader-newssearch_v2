@@ -52,6 +52,7 @@
         <button type="button" class="workspace-tab active" data-view="information" aria-controls="informationView" aria-pressed="true">정보검색</button>
         <button type="button" class="workspace-tab" data-view="video" aria-controls="videoView" aria-pressed="false">영상검색</button>
         <button type="button" class="workspace-tab" data-view="community" aria-controls="communityView" aria-pressed="false">커뮤니티</button>
+        <button type="button" class="workspace-tab" data-view="feed" aria-controls="feedView" aria-pressed="false">피드</button>
     </nav>
     </div>
     <aside id="searchSidebar" aria-label="검색 및 검색 조건">
@@ -70,6 +71,25 @@
         <div id="mobileSearchControls"></div>
     </dialog>
     <div id="resultViewport" tabindex="-1" aria-label="검색 결과 화면">
+    <section id="feedView" class="workspace-view" hidden aria-labelledby="feedHeading">
+        <div class="section-heading"><div><p class="eyebrow">COMMUNITY FEED</p><h1 id="feedHeading" tabindex="-1">피드</h1><p class="section-description">발견한 정보와 생각을 공유하세요.</p></div><button id="boardWriteBtn" class="btn-search" type="button">글쓰기</button></div>
+        <p id="boardStatus" role="status" aria-live="polite"></p>
+        <div id="boardPosts" class="board-posts"></div>
+        <nav id="boardPages" aria-label="게시글 페이지"></nav>
+        <dialog id="boardEditor" aria-labelledby="boardEditorTitle">
+            <form id="boardForm"><div class="mobile-search-heading"><h2 id="boardEditorTitle">글쓰기</h2><button id="boardEditorClose" type="button">닫기</button></div>
+            <label for="boardTitle">제목</label><input id="boardTitle" class="search-input" maxlength="150" required>
+            <label for="boardBody">본문</label><textarea id="boardBody" maxlength="10000" rows="8" required></textarea>
+            <label for="boardNickname">닉네임</label><input id="boardNickname" maxlength="30" class="search-input" required autocomplete="off">
+            <label for="boardPassword">비밀번호</label><input id="boardPassword" minlength="4" type="password" maxlength="128" class="search-input" required autocomplete="new-password">
+            <p id="boardEditorStatus" role="status"></p><button type="submit" class="btn-search">저장</button></form>
+        </dialog>
+        <dialog id="boardAuth" aria-labelledby="boardAuthTitle"><form id="boardAuthForm">
+            <h2 id="boardAuthTitle">게시글 삭제</h2><label for="boardAuthNickname">닉네임</label><input id="boardAuthNickname" class="search-input" required maxlength="30">
+            <label for="boardAuthPassword">비밀번호</label><input id="boardAuthPassword" class="search-input" type="password" required maxlength="128" autocomplete="current-password">
+            <p id="boardAuthStatus" role="status"></p><div class="content-actions"><button class="btn-search" type="submit">삭제</button><button id="boardAuthClose" class="btn-content-action" type="button">취소</button></div>
+        </form></dialog>
+    </section>
     <section id="exploreView" class="workspace-view utility-view" hidden aria-labelledby="exploreHeading">
         <p class="eyebrow">DISCOVER</p><h1 id="exploreHeading" tabindex="-1">주제 탐색</h1>
         <p class="section-description">관심 분야를 선택해 정보를 탐색하거나, 인기 주제로 검색을 시작하세요.</p>
@@ -220,5 +240,6 @@
 
     <script src="content-actions.js" defer></script>
     <script src="app.js" defer></script>
+    <script src="board-ui.js" defer></script>
 </body>
 </html>
