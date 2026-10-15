@@ -45,7 +45,7 @@ test('YouTube popular search fetches statistics in one batch and orders by views
             assert.equal(url.searchParams.get('order'), 'viewCount');
             return Response.json({ items: ['a', 'b'].map(id => ({ id: { videoId: id }, snippet: { title: `AI ${id}`, publishedAt: '2026-09-29' } })) });
         }
-        assert.equal(url.searchParams.get('part'), 'statistics');
+        assert.equal(url.searchParams.get('part'), 'statistics,contentDetails');
         assert.equal(url.searchParams.get('id'), 'a,b');
         return Response.json({ items: [{ id: 'a', statistics: { viewCount: '100' } }, { id: 'b', statistics: { viewCount: '9000' } }] });
     });

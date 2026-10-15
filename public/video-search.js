@@ -127,7 +127,7 @@ async function searchInvidious(q,o){
     var sortMap={relevance:'relevance',viewCount:'view_count',date:'upload_date'};
     var dateMap={'24h':'today','7d':'week','30d':'month','1y':'year'};
     function path(p){
-        var s='/api/v1/search?q='+encodeURIComponent(q)+'&type=video&page='+p+'&region=KR&sort_by='+(sortMap[o.order]||'relevance');
+        var s='/api/v1/search?q='+encodeURIComponent(q)+'&type=video&page='+p+'&region='+({ko:'KR',en:'US',ja:'JP',zh:'TW'}[o.language]||'KR')+'&hl='+(o.language||'ko')+'&sort_by='+(sortMap[o.order]||'relevance');
         if(dateMap[o.date])s+='&date='+dateMap[o.date];
         if(o.dur&&o.dur!=='any')s+='&duration='+o.dur;
         return s;
@@ -149,7 +149,7 @@ async function searchInvidious(q,o){
         items.push({
             id:x.videoId,title:x.title||'',channelTitle:x.author||'',channelId:x.authorId||'',
             publishedAt:new Date((x.published||0)*1000),
-            viewCount:x.viewCount||0,sec:x.lengthSeconds||0,subCount:null
+            viewCount:x.viewCount??null,sec:x.lengthSeconds||0,subCount:null
         });
     });
     return{items:items,backend:{kind:'inv',base:first.base}};
@@ -169,7 +169,7 @@ async function searchPiped(q,o){
         items.push({
             id:m[1],title:x.title||'',channelTitle:x.uploaderName||'',channelId:cm?cm[1]:'',
             publishedAt:new Date(x.uploaded>0?x.uploaded:0),
-            viewCount:x.views>=0?x.views:0,sec:x.duration>0?x.duration:0,subCount:null
+            viewCount:x.views>=0?x.views:null,sec:x.duration>0?x.duration:0,subCount:null
         });
     });
     // 클라이언트 필터
@@ -198,12 +198,13 @@ var PLAT={youtube:{name:'YouTube'},dailymotion:{name:'Dailymotion'},peertube:{na
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
 function formatOf(sec){return sec>0&&sec<=SHORT_MAX?'short':'long';}
 function matchFormat(i,f){
-    if(f==='short')return i.sec>0&&i.sec<=SHORT_MAX;
+    if(f==='short')return i.platform==='youtube'&&i.isShort===true&&i.isVertical===true;
     if(f==='long')return i.sec>SHORT_MAX;
     return true;
 }
 // 서버가 필터/정렬을 지원하지 않는 플랫폼용 클라이언트 처리
 function clientFilter(items,o){
+    if(o.format==='short')return items.filter(function(i){return matchFormat(i,'short');});
     var cut=dateCutoff(o.date);
     if(cut)items=items.filter(function(i){return i.publishedAt.getTime()<=0||i.publishedAt>=cut;});
     if(o.dur==='short')items=items.filter(function(i){return i.sec<240;});
@@ -219,9 +220,9 @@ async function searchYT(q,o){
     var periods={'24h':'1d','7d':'7d','30d':'30d','1y':'365d',all:'all'};
     var sorts={relevance:'relevance',viewCount:'popular',date:'latest'};
     try {
-        var data=await fetchJSON('/api/search?'+new URLSearchParams({category:'youtube',q:q,country:'KR',period:periods[o.date]||'all',sort:sorts[o.order]||'relevance',videoDuration:o.format==='short'&&o.dur==='any'?'short':o.dur}),20000);
+        var data=await fetchJSON('/api/search?'+new URLSearchParams({category:'youtube',q:q,language:o.language||'ko',includeSubscribers:$('apiSubs').value,videoFormat:o.format,period:periods[o.date]||'all',sort:sorts[o.order]||'relevance',videoDuration:o.format==='short'?'any':o.dur}),40000);
         if(!Array.isArray(data.items))throw new Error('YouTube 검색 응답 형식 오류');
-        var items=data.items.map(function(i){return {id:new URL(i.url).searchParams.get('v'),platform:'youtube',languageMatch:i.languageMatch,title:i.title,channelTitle:i.publisher,channelId:i.channelId||'',url:i.url,thumb:i.thumbnail,publishedAt:new Date(i.date||0),viewCount:i.viewCount===null?null:(i.viewCount??null),sec:i.durationSeconds||0,subCount:null};});
+        var items=data.items.map(function(i){return {id:new URL(i.url).searchParams.get('v')||new URL(i.url).pathname.split('/').filter(Boolean).pop(),platform:'youtube',languageMatch:i.languageMatch,title:i.title,channelTitle:i.publisher,channelId:i.channelId||'',url:i.url,thumb:i.thumbnail,publishedAt:new Date(i.date||0),viewCount:i.viewCount===null?null:(i.viewCount??null),sec:i.durationSeconds||0,subCount:i.subscriberCount??null,isShort:i.isShort===true,isVertical:i.isVertical===true};});
         return {items:clientFilter(items,o),backend:{kind:'site',base:location.host}};
     } catch(error) {
         // Public instances remain a fallback when the site's collector fails.
@@ -241,7 +242,7 @@ async function searchDailymotion(q,o){
     var url='https://api.dailymotion.com/videos?search='+encodeURIComponent(q)+'&fields='+fields+'&sort='+sort+'&limit='+Math.min(100,20*o.pages)+'&page=1';
     var cut=dateCutoff(o.date);
     if(cut)url+='&created_after='+Math.floor(cut.getTime()/1000);
-    var j=await fetchJSON('/api/video-platform?'+new URLSearchParams({platform:'dailymotion',q:q,order:o.order,date:o.date,pages:String(o.pages)}),18000);
+    var j=await fetchJSON('/api/video-platform?'+new URLSearchParams({platform:'dailymotion',q:q,language:o.language||'ko',order:o.order,date:o.date,pages:String(o.pages)}),18000);
     if(!j||!Array.isArray(j.list))throw new Error('Dailymotion 응답 오류');
     var items=j.list.map(function(v){
         var f=v['owner.followers_total'];
@@ -250,7 +251,7 @@ async function searchDailymotion(q,o){
             channelTitle:v['owner.screenname']||'',channelId:'dm:'+(v['owner.id']||''),
             url:v.url||('https://www.dailymotion.com/video/'+encodeURIComponent(v.id)),
             thumb:v.thumbnail_360_url||'',publishedAt:new Date((v.created_time||0)*1000),
-            viewCount:v.views_total||0,sec:v.duration||0,subCount:f>0?f:null
+            viewCount:v.views_total??null,sec:v.duration||0,subCount:f>0?f:null
         };
     });
     return{items:clientFilter(items,o),backend:{kind:'dailymotion',base:'api.dailymotion.com'}};
@@ -262,7 +263,7 @@ async function searchPeerTube(q,o){
     var url='https://sepiasearch.org/api/v1/search/videos?search='+encodeURIComponent(q)+'&start=0&count='+Math.min(100,20*o.pages)+'&sort='+sort+'&nsfw=false';
     var cut=dateCutoff(o.date);
     if(cut)url+='&startDate='+encodeURIComponent(cut.toISOString());
-    var j=await fetchJSON('/api/video-platform?'+new URLSearchParams({platform:'peertube',q:q,order:o.order,date:o.date,pages:String(o.pages)}),18000);
+    var j=await fetchJSON('/api/video-platform?'+new URLSearchParams({platform:'peertube',q:q,language:o.language||'ko',order:o.order,date:o.date,pages:String(o.pages)}),18000);
     if(!j||!Array.isArray(j.data))throw new Error('PeerTube 응답 오류');
     var items=[];
     j.data.forEach(function(v){
@@ -273,7 +274,7 @@ async function searchPeerTube(q,o){
             channelTitle:ch.displayName||ac.displayName||'',channelId:'',
             url:v.url||'',thumb:v.thumbnailUrl||'',
             publishedAt:new Date(v.publishedAt||0),
-            viewCount:v.views||0,sec:v.duration||0,subCount:null
+            viewCount:v.views??null,sec:v.duration||0,subCount:null
         });
     });
     return{items:clientFilter(items,o),backend:{kind:'peertube',base:'sepiasearch.org'}};
@@ -282,7 +283,7 @@ async function searchPeerTube(q,o){
 /* ---- 플랫폼 묶음 검색 ---- */
 async function searchPlatforms(q,o){
     var GROUPS={youtube:['youtube'],other:['dailymotion','peertube'],all:['youtube','dailymotion','peertube']};
-    var plats=GROUPS[o.platform]||['youtube'];
+    var plats=o.format==='short'?['youtube']:(GROUPS[o.platform]||['youtube']);
     var fn={youtube:searchYT,dailymotion:searchDailymotion,peertube:searchPeerTube};
     var settled=await Promise.allSettled(plats.map(function(p){return fn[p](q,o);}));
     var items=[],status=[],yt=null;
@@ -342,7 +343,7 @@ function viralOf(i){return i.subCount>0&&i.viewCount!==null?(i.viewCount/i.subCo
 function sortVal(i,k){
     if(k==='date')return i.publishedAt.getTime();
     if(k==='viralScore'){var v=viralOf(i);return v===null?-1:v;}
-    if(k==='subCount')return i.subCount||-1;
+    if(k==='subCount')return i.subCount??-1;
     return i[k]||0;
 }
 function scheduleRender(){if(renderTimer)return;renderTimer=setTimeout(function(){renderTimer=null;render();},250);}
@@ -360,7 +361,7 @@ function levelOf(s){
 function buildPrompt(i){
     var v=viralOf(i);
     var perf=v===null?'(구독자 수 미확인)':'구독자 대비 '+(v/100).toFixed(1)+'배 조회수';
-    return '나는 유튜브 크리에이터야. 아래 영상을 벤치마킹해서 기획안을 써줘.\n\n[대상]\n제목: '+i.title+'\n플랫폼: '+PLAT[i.platform||'youtube'].name+' ('+(formatOf(i.sec)==='short'?'숏폼':'롱폼')+')\n채널: '+i.channelTitle+'\n길이: '+fmtDur(i.sec)+'\n조회수: '+(i.viewCount===null?'미제공':i.viewCount.toLocaleString())+'\n성과: '+perf+'\n\n[요청]\n1. 클릭을 부른 심리적 트리거 분석\n2. 내 주제에 맞춘 썸네일/제목 5개 추천\n3. 시청 지속 시간을 위한 대본 구조 설계';
+    return '나는 유튜브 크리에이터야. 아래 영상을 벤치마킹해서 기획안을 써줘.\n\n[대상]\n제목: '+i.title+'\n플랫폼: '+PLAT[i.platform||'youtube'].name+' ('+(i.isShort?'쇼츠':i.sec>SHORT_MAX?'롱폼':'일반 영상')+')\n채널: '+i.channelTitle+'\n길이: '+fmtDur(i.sec)+'\n조회수: '+(i.viewCount===null?'미제공':i.viewCount.toLocaleString())+'\n성과: '+perf+'\n\n[요청]\n1. 클릭을 부른 심리적 트리거 분석\n2. 내 주제에 맞춘 썸네일/제목 5개 추천\n3. 시청 지속 시간을 위한 대본 구조 설계';
 }
 
 function makeCard(i){
@@ -371,14 +372,14 @@ function makeCard(i){
     return h('div',{class:'video-card'},
         h('div',{class:'thumb-box',onclick:function(){if(url)window.open(url,'_blank','noopener');}},
             h('img',{src:thumb,class:'thumb-img',loading:'lazy',referrerpolicy:'no-referrer',alt:''}),
-            h('span',{class:'duration-badge'},fmtDur(i.sec))),
+            h('span',{class:'duration-badge'},i.sec>0?fmtDur(i.sec):'-')),
         h('div',{class:'card-body'},
             h('div',{class:'card-title',title:i.title},i.title),
-            h('div',{class:'channel-info'},h('span',{class:'plat-badge plat-'+P},PLAT[P].name+' · '+(formatOf(i.sec)==='short'?'숏폼':'롱폼')),' '+i.channelTitle+' · '+fmtDate(i.publishedAt)),
+            h('div',{class:'channel-info'},h('span',{class:'plat-badge plat-'+P},PLAT[P].name+' · '+(i.isShort?'쇼츠':i.sec>SHORT_MAX?'롱폼':'일반 영상')),' '+i.channelTitle+' · '+fmtDate(i.publishedAt)),
             h('div',{class:'viral-badge '+lv.cls},lv.txt),
             h('div',{class:'stats-grid'},
                 h('div',{class:'stat-row'},h('span',{},'조회수'),h('span',{class:'stat-val'},fmtNum(i.viewCount))),
-                h('div',{class:'stat-row'},h('span',{},'구독자'),h('span',{class:'stat-val'},i.subCount>0?fmtNum(i.subCount):'-')),
+                h('div',{class:'stat-row'},h('span',{},'구독자'),h('span',{class:'stat-val'},i.subCount!=null?fmtNum(i.subCount):'-')),
                 h('div',{class:'stat-row'},h('span',{},'기여도'),h('span',{class:'stat-val',style:'color:var(--blue)'},v===null?'-':Math.round(v).toLocaleString()+'%'))),
             h('div',{class:'action-row'},
                 h('button',{class:'copy-btn',onclick:function(){copyVideoLink(url,false);}},'URL복사'),
@@ -395,8 +396,11 @@ function render(){
     el.textContent='';
     if(!rawData.length){el.appendChild(h('div',{class:'empty-state',style:'grid-column:1/-1'},h('p',{},'데이터 없음')));return;}
     rawData.sort(function(a,b){
-        if(!$('keyword').value.trim()) return koreanPriority(b)-koreanPriority(a)||sortVal(b,'date')-sortVal(a,'date');
-        var x=sortVal(a,currentSort),y=sortVal(b,currentSort);return isDescending?y-x:x-y;
+        var x=sortVal(a,currentSort),y=sortVal(b,currentSort);
+        var missingA=currentSort==='viralScore'?viralOf(a)===null:currentSort==='subCount'?a.subCount==null:currentSort==='viewCount'?a.viewCount==null:false;
+        var missingB=currentSort==='viralScore'?viralOf(b)===null:currentSort==='subCount'?b.subCount==null:currentSort==='viewCount'?b.viewCount==null:false;
+        if(missingA!==missingB)return missingA?1:-1;
+        return isDescending?y-x:x-y;
     });
     $('resultCount').textContent='결과: '+rawData.length+'개';
     var frag=document.createDocumentFragment();
@@ -417,8 +421,8 @@ async function fetchData(){
     var plat=$('apiPlatform').value;
     $('resultCount').textContent='검색 중...';
     $('backendBadge').textContent='백엔드: 연결 중...';$('backendBadge').className='status-badge';
-    area.appendChild(h('div',{class:'spinner-wrap',style:'grid-column:1/-1'},h('div',{class:'spinner'}),h('div',{style:'color:#888;font-size:14px'},'영상을 불러오는 중... (YouTube는 살아있는 인스턴스를 찾느라 최대 수십 초)')));
-    var opts={order:$('apiOrder').value,date:$('apiDate').value,dur:$('apiDuration').value,pages:parseInt($('apiPages').value,10)||1,platform:plat,format:$('apiFormat').value};
+    area.appendChild(h('div',{class:'spinner-wrap',style:'grid-column:1/-1'},h('div',{class:'spinner'}),h('div',{style:'color:#888;font-size:14px'},'영상을 검색하고 조회수·채널 정보를 확인하고 있습니다…')));
+    var opts={order:$('apiOrder').value,date:$('apiDate').value,dur:$('apiDuration').value,pages:parseInt($('apiPages').value,10)||1,platform:plat,format:$('apiFormat').value,language:$('apiLanguage').value};
     currentSort=opts.order==='date'?'date':opts.order==='viewCount'?'viewCount':'relevance';
     isDescending=true;
     document.querySelectorAll('.sort-btn').forEach(function(button){button.classList.toggle('active',button.dataset.sort===currentSort);});
@@ -433,7 +437,7 @@ async function fetchData(){
             $('resultCount').textContent='조건에 맞는 결과 0개';
             area.appendChild(h('div',{class:'empty-state',style:'grid-column:1/-1'},
                 h('h3',{},'현재 조건에 맞는 영상이 없습니다'),
-                h('p',{},'선택한 기간·포맷·길이를 모두 만족하는 수집 결과가 없습니다. 연결 실패와 검색 결과 없음은 다릅니다.'),
+                h('p',{},'기간이나 영상 길이 조건을 넓혀 다시 검색해 보세요.'),
                 h('p',{},res.status.filter(function(s){return !s.ok;}).map(function(s){return PLAT[s.p].name+': '+s.msg;}).join(' / ')),
                 h('button',{onclick:function(){$('apiDate').value='7d';fetchData();}},'최근 1주로 다시 검색')));
             return;

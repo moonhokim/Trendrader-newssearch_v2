@@ -6,3 +6,7 @@ node_modules
 *.docx
 probe.mjs
 render.yaml
+.update-backups
+.env.*
+banner.png
+logo.png

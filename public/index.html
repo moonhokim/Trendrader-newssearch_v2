@@ -75,6 +75,13 @@
         </form>
         <div id="mobileSearchControls"></div>
     </dialog>
+    <dialog id="searchHelpDialog" class="search-help-dialog" aria-labelledby="searchHelpTitle">
+        <form method="dialog"><div class="mobile-search-heading"><h2 id="searchHelpTitle">검색 도움말</h2><button type="submit" aria-label="검색 도움말 닫기">닫기</button></div></form>
+        <p id="rankingHelp">언어를 선택하면 해당 언어의 검색 설정과 출처를 우선합니다. 검색어도 같은 언어로 입력하면 더 정확한 결과를 찾을 수 있습니다. 출처에 따라 다른 언어의 결과가 포함될 수 있습니다.</p>
+        <p>최신순은 게시 시각을, 인기순은 출처가 제공하는 조회·반응 지표를 기준으로 합니다. 제목이 같은 결과는 한 번만 표시합니다.</p>
+        <p class="source-note" id="rankingNote" aria-live="polite">인기 지표가 없는 결과는 뉴스 → YouTube → 커뮤니티 → 블로그 → GitHub 순으로 표시합니다.</p>
+        <p>자동 갱신을 켜면 1분마다 다시 검색합니다. 검색 결과의 제목을 누르면 출처 설명을, 원문 보기를 누르면 전체 내용을 확인할 수 있습니다.</p>
+    </dialog>
     <div id="resultViewport" tabindex="-1" aria-label="검색 결과 화면">
     <section id="feedView" class="workspace-view" hidden aria-labelledby="feedHeading">
         <div class="section-heading"><div><p class="eyebrow">COMMUNITY FEED</p><h1 id="feedHeading" tabindex="-1">피드</h1><p class="section-description">발견한 정보와 생각을 공유하세요.</p></div><button id="boardWriteBtn" class="btn-search" type="button">글쓰기</button></div>
@@ -124,7 +131,7 @@
 
         <!-- Search Bar & Filters Section -->
         <section class="search-section glass">
-            <div class="search-heading"><p class="eyebrow">SEARCH</p><h2>관심 있는 정보를 한곳에서</h2><p class="section-description">분야와 국가를 선택한 뒤 키워드로 검색하세요.</p></div>
+            <div class="search-heading"><h2>검색 조건</h2><p class="section-description">언어와 기간으로 결과를 좁혀보세요.</p><button type="button" id="openSearchHelp" class="btn-content-action" aria-haspopup="dialog" aria-controls="searchHelpDialog">검색 도움말</button></div>
             <!-- Category Chips -->
             <div class="category-scroll-container" id="categoryContainer"></div>
 
@@ -136,8 +143,8 @@
                 </div>
 
                 <div class="filter-group">
-                    <label class="filter-label" for="filterCountry"> 국가·우선 언어 (전체 채널)</label>
-                    <select class="filter-select" id="filterCountry" aria-describedby="rankingHelp"></select>
+                    <label class="filter-label" for="filterLanguage"> 검색 언어</label>
+                    <select class="filter-select" id="filterLanguage"></select>
                 </div>
 
                 <div class="filter-group">
@@ -159,7 +166,6 @@
             </div>
 
             <div class="live-controls"><label><input type="checkbox" id="autoRefresh"> 1분마다 자동 갱신</label><p id="searchStatus" role="status" aria-live="polite">수집 대기 중</p></div>
-            <p class="source-note" id="rankingNote" aria-live="polite">인기 지표가 없는 결과는 뉴스 → YouTube → 커뮤니티 → 블로그 → GitHub 순으로 표시합니다.</p>
             <details class="collection-details" id="collectionDetails"><summary>채널별 수집 상태</summary><div id="sourceStatuses" class="source-statuses"></div><p class="source-note">조회는 출처에서 가져온 수, 표시는 검색 조건·중복 제거·최대 100건 제한 적용 후 결과 수입니다. 날짜가 없는 항목은 기간 필터에서 제외될 수 있습니다.</p></details>
         </section>
 
@@ -184,7 +190,6 @@
                 </div>
 
                 <div class="result-actions"><button id="exportBtn" class="btn-view-original" disabled>현재 결과 CSV 저장</button><button id="shareBtn" class="btn-view-original">검색 주소 복사</button><span id="actionStatus" role="status"></span></div>
-                <p class="source-note" id="rankingHelp">동일한 제목은 한 번만 표시합니다. 인기 지표가 없으면 뉴스 → YouTube → 커뮤니티 → 블로그 → GitHub 순입니다. 국가 선택은 우선 언어, 실시간은 주기적 수집을 뜻합니다.</p>
                 <div id="feedList" class="feed-list"></div>
             </section>
 
@@ -205,7 +210,7 @@
     </main>
 
     <section id="videoView" class="workspace-view" aria-labelledby="videoHeading" hidden>
-        <div class="section-heading"><div><p class="eyebrow">VIDEO INSIGHT</p><h1 id="videoHeading">영상검색</h1><p class="section-description">영상과 채널을 비교하고, 떡상지수로 콘텐츠 기회를 발견하세요.</p><p class="source-note">V6의 YouTube·Dailymotion·PeerTube 통합 검색과 숏폼·롱폼 필터를 제공합니다. 사이트 서버에서 영상 제공처를 조회합니다. 외부 서비스의 접근 제한 또는 검색 조건에 따라 결과가 없을 수 있습니다.</p></div></div>
+        <div class="section-heading"><div><h1 id="videoHeading">영상검색</h1><p class="section-description">조회수와 채널 규모를 비교해 관심 있는 영상을 찾아보세요.</p></div></div>
         <iframe id="videoSearchFrame" title="YouTube 영상검색 및 인사이트" data-src="/video-search.html" allow="clipboard-write" class="video-search-frame"></iframe>
     </section>
 
@@ -214,7 +219,7 @@
         <p id="communityResultStatus" class="source-note" role="status" aria-live="polite">수집 대기 중</p>
         <div class="search-section glass">
             <h2>커뮤니티 검색 조건</h2>
-            <p class="source-note">한국: GeekNews·클리앙·루리웹·에펨코리아·뽐뿌·디시인사이드·오늘의유머. GeekNews는 RSS, 나머지 한국 출처는 Google 뉴스의 사이트 한정 검색으로 수집하므로 색인된 공개 글만 표시합니다.</p>
+            <details class="collection-details"><summary>검색 가능한 커뮤니티</summary><p class="source-note">GeekNews·클리앙·루리웹·에펨코리아·뽐뿌·디시인사이드·오늘의유머와 해외 커뮤니티를 검색합니다. 공개되어 검색 가능한 글만 표시합니다.</p></details>
             <form id="communityForm" class="community-form">
                 <label for="communityScope">커뮤니티 범위</label><select id="communityScope" class="filter-select"><option value="all">전체</option><option value="korea" selected>한국 커뮤니티</option><option value="global">해외 커뮤니티</option></select>
                 <label for="communityQuery">검색어</label><input id="communityQuery" class="search-input" maxlength="180" placeholder="관심 있는 주제 입력">
@@ -229,7 +234,7 @@
 
     <footer class="site-footer">
         <p>© 2026 TREND RADAR</p>
-        <p class="footer-note">출처가 제공한 설명과 공개 데이터 · 원문 전체는 원문 보기에서 확인 · 수집 범위와 오류는 검색 상태에 표시</p>
+        <p class="footer-note">전체 내용은 각 결과의 원문 보기에서 확인하세요.</p>
     </footer>
     </div>
     </div>

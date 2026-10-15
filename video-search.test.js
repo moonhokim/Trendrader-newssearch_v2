@@ -12,7 +12,7 @@ test('stock short videos today use same-origin collectors and empty results are 
     dom.window.fetch=async url=>{
         assert.ok(url.startsWith('/api/'));
         const request=new URL(url,'https://example.com'); requests.push(request);
-        const data=request.pathname==='/api/search'?{items:empty?[]:[{title:'주식 숏폼',url:'https://www.youtube.com/watch?v=abcdefghijk',publisher:'Channel',date:new Date().toISOString(),durationSeconds:60,viewCount:10}]}:request.searchParams.get('platform')==='dailymotion'?{list:[]}:{data:[]};
+        const data=request.pathname==='/api/search'?{items:empty?[]:[{title:'주식 숏폼',url:'https://www.youtube.com/watch?v=abcdefghijk',publisher:'Channel',date:new Date().toISOString(),durationSeconds:60,viewCount:10,subscriberCount:5,isShort:true,isVertical:true}]}:request.searchParams.get('platform')==='dailymotion'?{list:[]}:{data:[]};
         return {ok:true,text:async()=>JSON.stringify(data)};
     };
     dom.window.eval(script);
@@ -23,11 +23,30 @@ test('stock short videos today use same-origin collectors and empty results are 
     await dom.window.fetchData();
     assert.equal(doc.querySelectorAll('.video-card').length,1);
     assert.equal(requests[0].searchParams.get('period'),'1d');
-    assert.equal(requests[0].searchParams.get('videoDuration'),'short');
-    assert.equal(requests.length,3);
+    assert.equal(requests[0].searchParams.get('videoDuration'),'any');
+    assert.equal(requests.length,1);
+    assert.equal(requests[0].searchParams.get('videoFormat'),'short');
+    assert.equal(requests[0].searchParams.get('language'),'ko');
+    assert.equal(requests[0].searchParams.get('includeSubscribers'),'1');
+    assert.equal(dom.window.rawData[0].subCount,5);
     empty=true;
     await dom.window.fetchData();
     assert.equal(doc.querySelector('.err-box'),null);
     assert.match(doc.getElementById('resultCount').textContent,/결과 0개/);
     assert.match(doc.querySelector('.empty-state').textContent,/최근 1주로 다시 검색/);
+});
+
+test('reordering works without a keyword and leaves unavailable metrics last',t=>{
+ const dom=new JSDOM(html,{url:'https://example.com',runScripts:'outside-only'});t.after(()=>dom.window.close());const w=dom.window;w.eval(script);
+ const item=(id,views,subs)=>({id,platform:'youtube',title:id,channelTitle:'Channel',publishedAt:new Date('2026-01-01'),viewCount:views,subCount:subs,sec:60});
+ w.rawData=[item('low',10,1),item('high',100,10),item('unknown',null,null)];
+ const titles=()=>Array.from(w.document.querySelectorAll('.card-title'),x=>x.textContent);
+ w.document.querySelector('[data-sort="viewCount"]').click();assert.deepEqual(titles(),['high','low','unknown']);
+ w.document.getElementById('orderToggle').click();assert.deepEqual(titles(),['low','high','unknown']);
+ w.document.querySelector('[data-sort="subCount"]').click();assert.deepEqual(titles(),['low','high','unknown']);
+ w.document.querySelector('[data-sort="viralScore"]').click();assert.equal(titles().at(-1),'unknown');
+ assert.equal(w.matchFormat({platform:'youtube',isShort:true,isVertical:true,sec:0},'short'),true);
+ assert.equal(w.matchFormat({platform:'youtube',isShort:true,isVertical:false,sec:60},'short'),false);
+ assert.equal(w.matchFormat({platform:'dailymotion',isShort:true,isVertical:true,sec:60},'short'),false);
+ assert.deepEqual(Array.from(w.document.querySelectorAll('#apiLanguage option'),x=>x.value),['ko','en','ja','zh']);
 });

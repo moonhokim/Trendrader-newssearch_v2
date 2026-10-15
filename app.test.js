@@ -101,8 +101,8 @@ test('imported video search preserves filters, subscriber enrichment, sorting an
     assert.equal(doc.querySelector('#tab-keyword'), null);
     assert.equal(doc.querySelector('#kwRunBtn'), null);
     assert.equal(doc.querySelector('[data-tab="keyword"]'), null);
-    assert.equal(dom.window.matchFormat({sec:180}, 'short'), true);
-    assert.equal(dom.window.matchFormat({sec:181}, 'short'), false);
+    assert.equal(dom.window.matchFormat({platform:'youtube',sec:180,isShort:true,isVertical:true}, 'short'), true);
+    assert.equal(dom.window.matchFormat({platform:'youtube',sec:60,isShort:false,isVertical:false}, 'short'), false);
     assert.equal(dom.window.safeMediaUrl('javascript:alert(1)'), '');
     dom.window.searchDailymotion = async () => ({items:[{id:'dm1',platform:'dailymotion',sec:60}], backend:{base:'api.dailymotion.com'}});
     dom.window.searchPeerTube = async () => { throw new Error('Unavailable'); };
@@ -142,7 +142,7 @@ test('frontend renders real text, new tabs, detail and safe original link; recor
     await flush();
     assert.equal(searchRequests().at(-1).searchParams.get('category'), 'blog');
     assert.equal(requests.at(-1).searchParams.has('record'), false);
-    assert.equal(doc.querySelector('#filterCountry').disabled, false);
+    assert.equal(doc.querySelector('#filterLanguage').disabled, false);
     doc.querySelector('button.ticker-item').click();
     await flush();
     assert.equal(searchRequests().at(-1).searchParams.get('q'), '검색 테스트');
@@ -210,7 +210,7 @@ test('URL filters restore, validate and persist; source health and stale cache s
     const query = requests.find(url => url.pathname === '/api/search').searchParams;
     assert.equal(query.get('category'), 'youtube');
     assert.equal(query.get('sort'), 'latest');
-    assert.equal(doc.querySelector('#filterCountry').disabled, false);
+    assert.equal(doc.querySelector('#filterLanguage').disabled, false);
     assert.match(doc.querySelector('#sourceStatuses').textContent, /조회 10건 · 표시 1건/);
     assert.match(doc.querySelector('#sourceStatuses').textContent, /1.2초/);
     assert.match(doc.querySelector('#searchStatus').textContent, /이전 캐시 결과 표시 중/);
@@ -248,7 +248,7 @@ test('CSV export uses displayed snapshot and neutralizes spreadsheet formulas', 
     assert.ok(csv.includes(item.url));
 });
 
-test('all categories accept country and latest sorting while fresh searches default to all time and latest', async t => {
+test('all categories accept language and latest sorting while fresh searches default to all time and latest', async t => {
     const requests = [];
     const dom = setup(async url => { requests.push(new URL(url, 'http://localhost')); return response(); });
     t.after(() => dom.window.close());
@@ -259,15 +259,15 @@ test('all categories accept country and latest sorting while fresh searches defa
     assert.equal(lastSearch().get('sort'), 'latest');
     assert.equal(lastSearch().get('period'), 'all');
     assert.deepEqual([...doc.querySelector('#filterSort').options].map(option => option.textContent), ['인기순 (조회·반응 우선)', '관련도 높은 순', '최신정보 순']);
-    const country = doc.querySelector('#filterCountry');
+    const country = doc.querySelector('#filterLanguage');
     for (const chip of doc.querySelectorAll('.category-chip')) {
         chip.click();
         await flush();
         assert.equal(country.disabled, false);
-        country.value = 'JP';
+        country.value = 'ja';
         country.dispatchEvent(new dom.window.Event('change'));
         await flush();
-        assert.equal(lastSearch().get('country'), 'JP');
+        assert.equal(lastSearch().get('language'), 'ja');
         assert.equal(lastSearch().get('category'), chip.dataset.category);
     }
     const sort = doc.querySelector('#filterSort');
@@ -297,7 +297,7 @@ test('search follows filters, collection details start closed and top button scr
     t.after(() => dom.window.close());
     await flush();
     const doc = dom.window.document;
-    assert.ok(doc.querySelector('#filterCountry').compareDocumentPosition(doc.querySelector('#searchInput')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.ok(doc.querySelector('#filterLanguage').compareDocumentPosition(doc.querySelector('#searchInput')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
     const details = doc.querySelector('#collectionDetails');
     assert.equal(details.open, false);
     details.querySelector('summary').click();
@@ -375,17 +375,17 @@ test('search conditions move between desktop panel and mobile dialog without los
     t.after(() => dom.window.close());
     await flush();
     const doc = dom.window.document;
-    assert.ok(doc.getElementById('desktopSearchControls').contains(doc.getElementById('filterCountry')));
-    doc.getElementById('filterCountry').value = 'JP';
+    assert.ok(doc.getElementById('desktopSearchControls').contains(doc.getElementById('filterLanguage')));
+    doc.getElementById('filterLanguage').value = 'ja';
     doc.querySelector('[data-view="community"]').click();
     assert.equal(doc.getElementById('communityForm').closest('.search-section').hidden, false);
-    assert.equal(doc.getElementById('filterCountry').closest('.search-section').hidden, true);
+    assert.equal(doc.getElementById('filterLanguage').closest('.search-section').hidden, true);
     media.matches = true;
     onResize(media);
     assert.ok(doc.getElementById('mobileSearchControls').contains(doc.getElementById('communityScope')));
     doc.querySelector('[data-view="information"]').click();
-    assert.ok(doc.getElementById('mobileSearchControls').contains(doc.getElementById('filterCountry')));
-    assert.equal(doc.getElementById('filterCountry').value, 'JP');
+    assert.ok(doc.getElementById('mobileSearchControls').contains(doc.getElementById('filterLanguage')));
+    assert.equal(doc.getElementById('filterLanguage').value, 'ja');
     const frame = doc.getElementById('videoSearchFrame');
     doc.querySelector('[data-view="video"]').click();
     frame.contentDocument.open();
@@ -410,7 +410,7 @@ test('video conditions exist before iframe load and match the video search optio
     t.after(() => dom.window.close());
     await flush();
     const doc = dom.window.document;
-    assert.equal(doc.querySelectorAll('.video-options select').length, 7);
+    assert.equal(doc.querySelectorAll('.video-options select').length, 8);
     const original = new JSDOM(await readFile(new URL('./public/video-search.html', import.meta.url), 'utf8'));
     t.after(() => original.window.close());
     for (const select of doc.querySelectorAll('.video-options select')) {
@@ -659,4 +659,38 @@ test('embedded video tooltips appear in the host viewport and hide on exit', asy
     assert.equal(buttons[1].getAttribute('aria-description'),tip.textContent);
     buttons[1].dispatchEvent(new frame.Event('pointerout',{bubbles:true}));
     assert.equal(tip.hidden,true);
+});
+
+test('information language selection sends four languages and maps regional trends', async t => {
+    const requests = [];
+    const dom = setup(async url => { requests.push(new URL(url, 'http://localhost')); return response(); });
+    t.after(() => dom.window.close());
+    await flush();
+    const select = dom.window.document.getElementById('filterLanguage');
+    assert.deepEqual(Array.from(select.options, option => option.value), ['ko', 'en', 'ja', 'zh']);
+    for (const [language, country] of [['ko', 'KR'], ['en', 'US'], ['ja', 'JP'], ['zh', 'CN']]) {
+        select.value = language;
+        select.dispatchEvent(new dom.window.Event('change'));
+        await flush();
+        const search = requests.filter(url => url.pathname === '/api/search').at(-1);
+        assert.equal(search.searchParams.get('language'), language);
+        assert.equal(search.searchParams.has('country'), false);
+        assert.equal(requests.filter(url => url.pathname === '/api/trends').at(-1).searchParams.get('country'), country);
+        assert.equal(JSON.parse(dom.window.localStorage.getItem('trend-search-filters-v1')).language, language);
+    }
+});
+
+test('legacy country preferences migrate to language and search help opens on demand', async t => {
+    const dom = setup(async () => response(), 'http://localhost/?country=JP');
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    assert.equal(doc.getElementById('filterLanguage').value, 'ja');
+    assert.equal(new URL(dom.window.location.href).searchParams.get('language'), 'ja');
+    const help = doc.getElementById('searchHelpDialog');
+    assert.equal(help.open, false);
+    help.showModal = () => { help.open = true; };
+    doc.getElementById('openSearchHelp').click();
+    assert.equal(help.open, true);
+    assert.ok(help.contains(doc.getElementById('rankingHelp')));
 });

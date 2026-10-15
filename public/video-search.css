@@ -122,3 +122,17 @@ body { font-size:14px; line-height:1.6; }
 .action-tooltip { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:10000; width:max-content; max-width:calc(100vw - 32px); padding:12px 16px; background:var(--panel); color:var(--text); border:1px solid var(--blue); border-radius:10px; box-shadow:0 8px 30px #0005; font-size:13px; line-height:1.6; pointer-events:none; }
 .action-tooltip[hidden] { display:none; }
 .action-row .copy-btn, .action-row .summary-btn, .action-row .ai-btn { font-size:clamp(12px,1.1vw,14px); white-space:nowrap; }
+
+/* Responsive search controls and optional help. */
+.search-row input { min-width:0; width:0; }
+.search-row button { flex-shrink:0; }
+.search-help { margin-bottom:12px; color:var(--sub); font-size:13px; }
+.search-help summary { cursor:pointer; color:var(--blue); }
+.search-help p { margin-top:8px; overflow-wrap:anywhere; }
+@media(max-width:700px) {
+.search-row { flex-direction:row; flex-wrap:nowrap; }
+.search-row input { width:0; flex:1 1 0; }
+.search-row button { width:auto; padding-inline:16px!important; }
+.native-filters select { text-overflow:ellipsis; }
+}
+@media(max-width:340px) { .native-filters { grid-template-columns:minmax(0,1fr); } }

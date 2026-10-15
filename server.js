@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import os from 'node:os';
-import { plain, safeUrl, canonicalUrl, iso, parseNews, parseYoutubeSearch, parseTrends, blog, humor, extraFeeds, collectExtraFeed } from './feeds.js';
+import { plain, safeUrl, canonicalUrl, iso, parseNews, parseYoutubeSearch, parseYoutubeCount, parseTrends, blog, humor, extraFeeds, collectExtraFeed } from './feeds.js';
 import { regions, localizedField, rankItems, rankingNote } from './search-policy.js';
 import { collectReddit } from './reddit.js';
 import { createBoardHandler } from './board.js';
@@ -15,11 +15,19 @@ const durations = { '1d': 1, '3d': 3, '7d': 7, '14d': 14, '30d': 30, '90d': 90, 
 export function options(params) {
     const o = { q: (params.get('q') || '').trim(), category: params.get('category') || 'all', country: params.get('country') || 'KR', period: params.get('period') || '7d', sort: params.get('sort') || 'popular', field: (params.get('field') || '').trim() };
     if (o.q.length > 180 || o.field.length > 30 || !['all', 'news', 'github', 'blog', 'reddit', 'humor', 'youtube'].includes(o.category) || !Object.hasOwn(locales, o.country) || !(o.period === 'all' || Object.hasOwn(durations, o.period)) || !['popular', 'latest', 'relevance'].includes(o.sort)) throw new Error('검색 조건을 확인하세요. 검색어는 180자까지 입력할 수 있습니다.');
+    const languageCountry = { ko: 'KR', en: 'US', ja: 'JP', zh: 'CN' };
+    if (params.has('language')) {
+        if (!Object.hasOwn(languageCountry, params.get('language'))) throw new Error('언어 조건을 확인하세요.');
+        o.country = languageCountry[params.get('language')];
+    }
+    o.includeSubscribers = params.get('includeSubscribers') === '1';
     o.koreanBrowse = !o.q && o.category === 'youtube';
-    if (o.koreanBrowse) { o.country = 'KR'; o.sort = 'latest'; }
+    if (o.koreanBrowse) { if (!params.has('language')) o.country = 'KR'; o.sort = 'latest'; }
     o.languageBrowse = !o.q && o.category === 'reddit';
     if (o.languageBrowse) o.sort = 'latest';
     o.language = regions[o.country].language;
+    o.videoFormat = params.get('videoFormat') || 'all';
+    if (!['all', 'short', 'long'].includes(o.videoFormat)) throw new Error('영상 형식을 확인하세요.');
     o.videoDuration = params.get('videoDuration') || 'any';
     if (!['any', 'short', 'medium', 'long'].includes(o.videoDuration)) throw new Error('영상 길이 조건을 확인하세요.');
     o.query = [o.q, localizedField(o.field, o.language)].filter(Boolean).join(' ');
@@ -82,25 +90,90 @@ async function community(o, fetcher) {
     if (!Array.isArray(data.hits)) throw new Error('커뮤니티 응답 형식 오류');
     return data.hits.map(i => ({ title: plain(i.title), url: safeUrl(i.url) || `https://news.ycombinator.com/item?id=${encodeURIComponent(i.objectID)}`, source: 'Hacker News', publisher: i.author || 'Hacker News', date: iso(i.created_at), dateLabel: '게시', description: plain(i.story_text) || '본문 설명이 제공되지 않습니다. 원문에서 확인하세요.', metrics: [`추천 ${i.points ?? 0}`, `댓글 ${i.num_comments ?? 0}`] }));
 }
-async function youtube(o, fetcher) {
-    const browseQuery = o.koreanBrowse ? '한국' : '';
-    const query = o.query || browseQuery;
+// Fetch public channel statistics once per channel, preserving unavailable values.
+async function enrichYoutubeChannels(items, o, fetcher) {
+    if (!items.length) return items;
+    if (o.videoFormat === 'short' && !process.env.YOUTUBE_API_KEY && (o.since || o.includeSubscribers)) {
+        for (let start = 0; start < items.length; start += 10) await Promise.all(items.slice(start, start + 10).map(async item => {
+            try {
+                const id = new URL(item.url).pathname.split('/').pop();
+                const url = new URL('https://www.youtube.com/watch');
+                url.search = new URLSearchParams({v:id,hl:o.language}).toString();
+                const response = await fetcher(url, {headers:{'User-Agent':'Mozilla/5.0'},signal:AbortSignal.timeout(3000)});
+                if (!response.ok) return;
+                const html = await readUpstream(response, 8 * 1024 * 1024);
+                const match = html.match(/(?:var\s+ytInitialPlayerResponse|ytInitialPlayerResponse)\s*=\s*(\{.*?\});\s*<\/script>/s);
+                if (!match) return;
+                const player = JSON.parse(match[1]);
+                const details = player.videoDetails || {};
+                const metadata = player.microformat?.playerMicroformatRenderer || {};
+                item.channelId = details.channelId || item.channelId;
+                item.publisher = details.author || item.publisher;
+                item.date = iso(metadata.publishDate || metadata.uploadDate) || item.date;
+                item.dateApproximate = false;
+                item.durationSeconds = parseYoutubeCount(details.lengthSeconds) ?? item.durationSeconds;
+                item.viewCount = parseYoutubeCount(details.viewCount) ?? item.viewCount;
+            } catch { /* Unknown dates stay unknown and cannot pass a date filter. */ }
+        }));
+    }
     if (process.env.YOUTUBE_API_KEY) {
+        if (o.videoFormat === 'short') {
+            try {
+                const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+                url.search = new URLSearchParams({key:process.env.YOUTUBE_API_KEY, part:'snippet,statistics,contentDetails', id:items.map(i=>new URL(i.url).pathname.split('/').pop()).join(',')}).toString();
+                const data = await upstream(url,true,fetcher,o.country);
+                const byId = new Map((data.items || []).map(i=>[i.id,i]));
+                items = items.map(item=>{const detail=byId.get(new URL(item.url).pathname.split('/').pop()); return detail ? {...item, channelId:detail.snippet?.channelId || item.channelId, publisher:detail.snippet?.channelTitle || item.publisher, date:iso(detail.snippet?.publishedAt) || item.date, viewCount:detail.statistics?.viewCount === undefined ? item.viewCount : Number(detail.statistics.viewCount)} : item;});
+            } catch { /* Public results remain useful if API quota is exhausted. */ }
+        }
+        if (!o.includeSubscribers) return items;
+        const ids=[...new Set(items.map(i=>i.channelId).filter(Boolean))];
+        if (!ids.length) return items;
+        try {
+            const url=new URL('https://www.googleapis.com/youtube/v3/channels');
+            url.search=new URLSearchParams({key:process.env.YOUTUBE_API_KEY,part:'statistics',id:ids.join(',')}).toString();
+            const data=await upstream(url,true,fetcher,o.country);
+            const counts=new Map((data.items || []).map(i=>[i.id,i.statistics?.hiddenSubscriberCount || i.statistics?.subscriberCount === undefined ? null : Number(i.statistics.subscriberCount)]));
+            return items.map(item=>({...item,subscriberCount:counts.get(item.channelId) ?? null}));
+        } catch { return items; }
+    }
+    if (!o.includeSubscribers) return items;
+    const ids=[...new Set(items.filter(i=>i.subscriberCount == null).map(i=>i.channelId).filter(id=>/^UC[\w-]{22}$/.test(id)))];
+    const counts=new Map();
+    // Small batches bound outgoing requests for multi-channel searches.
+    for(let start=0;start<ids.length;start+=5) await Promise.all(ids.slice(start,start+5).map(async id=>{
+        try {
+            const url=new URL('https://www.youtube.com/channel/'+id);url.searchParams.set('hl',o.language);
+            const response=await fetcher(url,{headers:{'User-Agent':'Mozilla/5.0','Accept-Language':regions[o.country].accept},signal:AbortSignal.timeout(5000)});
+            if(!response.ok)return;
+            const html=await readUpstream(response,8*1024*1024);
+            const match=html.match(/"subscriberCountText"\s*:\s*\{\s*"simpleText"\s*:\s*("(?:[^"\\]|\\.)*")/);
+            const modern=html.match(/"(?:content|text)"\s*:\s*("[^"\n]*(?:subscribers|구독자|チャンネル登録者|订阅者|訂閱者)[^"\n]*")/i);
+            const raw=match?.[1] || modern?.[1];
+            if(raw)counts.set(id,parseYoutubeCount(JSON.parse(raw)));
+        } catch { /* Hidden or unavailable counts stay null. */ }
+    }));
+    return items.map(item=>({...item,subscriberCount:item.subscriberCount ?? counts.get(item.channelId) ?? null}));
+}
+async function youtube(o, fetcher) {
+    const browseQuery = o.koreanBrowse ? (o.language === 'ko' ? '한국' : regions[o.country].videoQuery) : '';
+    const query = o.query || browseQuery;
+    if (process.env.YOUTUBE_API_KEY && o.videoFormat !== 'short') {
         const url = new URL(`https://www.googleapis.com/youtube/v3/${query ? 'search' : 'videos'}`);
         url.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: query ? 'snippet' : 'snippet,statistics', maxResults: '30', regionCode: o.country,
             ...(query ? { q: query, type: 'video', videoDuration:o.videoDuration || 'any', relevanceLanguage: o.language === 'zh' ? 'zh-Hans' : o.language, order: o.sort === 'latest' ? 'date' : o.sort === 'popular' ? 'viewCount' : 'relevance', ...(o.since ? { publishedAfter: new Date(o.since).toISOString() } : {}) } : { chart: 'mostPopular' }) }).toString();
         const data = await upstream(url, true, fetcher, o.country);
         if (!Array.isArray(data.items)) throw new Error('YouTube API 응답 형식 오류');
-        if (query && (o.sort === 'popular' || o.videoDuration !== 'any') && data.items.length) {
+        if (query && data.items.length) {
             const statsUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
-            statsUrl.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: o.videoDuration !== 'any' ? 'statistics,contentDetails' : 'statistics', id: data.items.map(i => i.id?.videoId).filter(Boolean).join(',') }).toString();
+            statsUrl.search = new URLSearchParams({ key: process.env.YOUTUBE_API_KEY, part: 'statistics,contentDetails', id: data.items.map(i => i.id?.videoId).filter(Boolean).join(',') }).toString();
             try {
                 const stats = await upstream(statsUrl, true, fetcher, o.country);
                 const byId = new Map((stats.items || []).map(i => [i.id, i]));
                 data.items = data.items.map(i => ({ ...i, statistics: byId.get(i.id?.videoId)?.statistics, contentDetails:byId.get(i.id?.videoId)?.contentDetails }));
             } catch { /* Keep search results when the optional statistics call fails. */ }
         }
-        return data.items.filter(i => (typeof i.id === 'string' ? i.id : i.id?.videoId) && i.snippet).map(i => ({
+        const items = data.items.filter(i => (typeof i.id === 'string' ? i.id : i.id?.videoId) && i.snippet).map(i => ({
             title: plain(i.snippet.title), url: `https://www.youtube.com/watch?v=${encodeURIComponent(typeof i.id === 'string' ? i.id : i.id.videoId)}`,
             source: 'YouTube', publisher: plain(i.snippet.channelTitle), date: iso(i.snippet.publishedAt), dateLabel: '게시',
             channelId:i.snippet.channelId || '', viewCount:i.statistics?.viewCount !== undefined ? Number(i.statistics.viewCount) : null,
@@ -108,22 +181,25 @@ async function youtube(o, fetcher) {
             description: plain(i.snippet.description).slice(0, 1500), thumbnail: safeUrl(i.snippet.thumbnails?.medium?.url),
             metrics: i.statistics?.viewCount ? [`조회 ${i.statistics.viewCount}`] : [], language: i.snippet.defaultAudioLanguage || i.snippet.defaultLanguage || null
         }));
+        return enrichYoutubeChannels(items, o, fetcher);
     }
     const url = new URL('https://www.youtube.com/results');
     url.searchParams.set('search_query', query || regions[o.country].videoQuery);
     url.searchParams.set('hl', o.language);
     url.searchParams.set('gl', o.country);
-    if (o.sort === 'popular' || o.sort === 'latest' || o.period !== 'all' || o.videoDuration !== 'any') {
+    if (o.sort === 'popular' || o.sort === 'latest' || o.period !== 'all' || o.videoDuration !== 'any' || o.videoFormat === 'short') {
         // YouTube public search filter: sort + video type + coarse upload window.
         // The exact selected period is still enforced after collection.
         const uploaded = o.period === '1d' ? 2 : ['3d', '7d'].includes(o.period) ? 3 : ['14d', '30d'].includes(o.period) ? 4 : o.period === 'all' ? null : 5;
         const duration = {short:1,long:2,medium:3}[o.videoDuration];
-        const filters = [...(uploaded ? [8, uploaded] : []), 16, 1, ...(duration ? [24,duration] : [])];
+        const filters = [...(uploaded ? [8, uploaded] : []), 16, o.videoFormat === 'short' ? 9 : 1, ...(duration ? [24,duration] : [])];
         url.searchParams.set('sp', Buffer.from([...(o.sort === 'relevance' ? [] : [8, o.sort === 'popular' ? 3 : 2]), 18, filters.length, ...filters]).toString('base64'));
     }
     const response = await fetcher(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GlobalTrendSearch/1.0)', Accept: 'text/html', 'Accept-Language': regions[o.country].accept }, signal: AbortSignal.timeout(12000) });
     if (!response.ok) throw new Error(`YouTube 검색 응답 오류 (${response.status})`);
-    return parseYoutubeSearch(await readUpstream(response, 8 * 1024 * 1024));
+    let items = parseYoutubeSearch(await readUpstream(response, 8 * 1024 * 1024));
+    if (o.videoFormat === 'short') items = items.filter(item => item.isShort === true && item.isVertical === true);
+    return enrichYoutubeChannels(items, o, fetcher);
 }
 const trendFieldTerms = {
     경제: ['경제', 'economy', 'business', 'market', '금리', '물가', '기업'],
@@ -308,7 +384,9 @@ export function createServer(fetcher = fetch, config = {}) {
             if (url.pathname === '/api/video-platform') {
                 const platform = url.searchParams.get('platform');
                 const enteredQuery = (url.searchParams.get('q') || '').trim();
-                const q = enteredQuery || '한국';
+                const language = url.searchParams.get('language') || 'ko';
+                if (!['ko','en','ja','zh'].includes(language)) return send(400, {error:'언어 조건을 확인하세요.'});
+                const q = enteredQuery || {ko:'한국',en:'popular videos',ja:'日本',zh:'中文'}[language];
                 const order = enteredQuery ? url.searchParams.get('order') || 'relevance' : 'date';
                 const date = url.searchParams.get('date') || 'all';
                 const pages = Number(url.searchParams.get('pages') || 2);
@@ -317,9 +395,9 @@ export function createServer(fetcher = fetch, config = {}) {
                 const limit = Math.min(100, 20 * pages);
                 const since = date === 'all' ? null : new Date(now() - ({ '24h':1, '7d':7, '30d':30, '1y':365 }[date]) * 86400000);
                 upstreamUrl.search = new URLSearchParams(platform === 'dailymotion'
-                    ? { search:q, fields:'id,title,thumbnail_360_url,views_total,duration,created_time,url,owner.id,owner.screenname,owner.followers_total', sort:({relevance:'relevance',viewCount:'visited',date:'recent'}[order]), limit:String(limit), page:'1', ...(since ? {created_after:String(Math.floor(since.getTime()/1000))} : {}) }
-                    : { search:q, start:'0', count:String(limit), sort:({relevance:'-match',viewCount:'-views',date:'-publishedAt'}[order]), nsfw:'false', ...(since ? {startDate:since.toISOString()} : {}) }).toString();
-                const key = 'video:' + JSON.stringify([platform, q, order, date, pages]);
+                    ? { search:q, languages:language, fields:'id,title,thumbnail_360_url,views_total,duration,created_time,url,owner.id,owner.screenname,owner.followers_total', sort:({relevance:'relevance',viewCount:'visited',date:'recent'}[order]), limit:String(limit), page:'1', ...(since ? {created_after:String(Math.floor(since.getTime()/1000))} : {}) }
+                    : { search:q, languageOneOf:language, start:'0', count:String(limit), sort:({relevance:'-match',viewCount:'-views',date:'-publishedAt'}[order]), nsfw:'false', ...(since ? {startDate:since.toISOString()} : {}) }).toString();
+                const key = 'video:' + JSON.stringify([platform, q, order, date, pages, language]);
                 const old = cache.get(key);
                 if (old && now() - old.time < old.ttl) return send(200, old.data);
                 if (!pending.has(key)) {
@@ -337,7 +415,7 @@ export function createServer(fetcher = fetch, config = {}) {
             if (url.pathname === '/api/search') {
                 let o;
                 try { o = options(url.searchParams); } catch (e) { return send(400, { error: e.message }); }
-                const key = JSON.stringify([o.q, o.field, o.category, o.country, o.period, o.sort, o.videoDuration, Boolean(process.env.YOUTUBE_API_KEY), Boolean(process.env.REDDIT_ACCESS_TOKEN)]);
+                const key = JSON.stringify([o.q, o.field, o.category, o.country, o.period, o.sort, o.videoDuration, o.videoFormat, o.includeSubscribers, Boolean(process.env.YOUTUBE_API_KEY), Boolean(process.env.REDDIT_ACCESS_TOKEN)]);
                 const old = cache.get(key);
                 const responseData = data => ({ ...data, trends: trends(o.q, url.searchParams.get('record') === '1') });
                 if (old && now() - old.time < old.ttl) return send(200, responseData({ ...old.data, cached: true }));

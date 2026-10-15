@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { safeUrl, canonicalUrl, plain, parseFeed, parseYoutubeSearch, parseTrends } from './feeds.js';
+import { safeUrl, canonicalUrl, plain, parseFeed, parseYoutubeSearch, parseYoutubeCount, parseTrends } from './feeds.js';
 
 test('links reject executable protocols and credential-bearing URLs', () => {
     for (const url of ['javascript:alert(1)', 'data:text/html,test', 'https://user:password@example.com/', '/relative']) assert.equal(safeUrl(url), '');
@@ -56,6 +56,43 @@ test('Trends keeps source metadata without inventing ranks or missing traffic', 
     assert.equal(items[0].rank, undefined);
     assert.equal(items[1].count, '');
     assert.throws(() => parseTrends('<html/>'));
+});
+
+test('YouTube localized counts preserve unknowns and parse displayed units', () => {
+    for (const [label, expected] of [['조회수 1.2만회', 12000], ['1.5M views', 1500000], ['2B views', 2000000000], ['12K subscribers', 12000], ['1.2万 回視聴', 12000], ['2.3亿次观看', 230000000], ['구독자 3억명', 300000000], ['조회수 1,234회', 1234], ['0 views', 0], ['조회수 없음', null], ['', null]]) {
+        assert.equal(parseYoutubeCount(label), expected, label);
+    }
+});
+
+test('YouTube accepts confirmed Shorts renderers and never treats short duration as Shorts', () => {
+    const contents = [
+        { videoRenderer: { videoId: 'regular', title: { simpleText: 'Regular' }, lengthText: { simpleText: '0:30' }, thumbnail: { thumbnails: [{ url: 'https://example.com/wide.jpg', width: 480, height: 270 }] } } },
+        { reelItemRenderer: { videoId: 'reel', headline: { simpleText: 'Reel' }, viewCountText: { simpleText: '조회수 2.5만회' }, thumbnail: { thumbnails: [{ url: 'https://example.com/portrait.jpg', width: 405, height: 720 }] } } },
+        { shortsLockupViewModel: { onTap: { innertubeCommand: { reelWatchEndpoint: { videoId: 'lockup' } } }, overlayMetadata: { primaryText: { content: 'Lockup' }, secondaryText: { content: '3.1M views' } }, thumbnail: { sources: [{ url: 'https://example.com/short.jpg', width: 405, height: 720 }] } } },
+        { reelItemRenderer: { videoId: 'unknown', headline: { simpleText: 'No dimensions' } } }
+    ];
+    const items = parseYoutubeSearch(`<script>var ytInitialData = ${JSON.stringify({ contents })};</script>`);
+    assert.equal(items.length, 4);
+    assert.equal(items[0].isShort, false);
+    assert.equal(items[0].isVertical, false);
+    assert.equal(items[0].subscriberCount, null);
+    assert.equal(items[1].isShort, true);
+    assert.equal(items[1].isVertical, true);
+    assert.equal(items[1].viewCount, 25000);
+    assert.equal(items[1].url, 'https://www.youtube.com/shorts/reel');
+    assert.equal(items[2].viewCount, 3100000);
+    assert.equal(items[2].title, 'Lockup');
+    assert.equal(items[3].isVertical, false);
+});
+
+test('YouTube joins visible channel subscriber counts by channel ID', () => {
+    const contents = [
+        { videoRenderer: { videoId: 'one', title: { simpleText: 'One' }, ownerText: { runs: [{ text: 'Channel', navigationEndpoint: { browseEndpoint: { browseId: 'UCone' } } }] } } },
+        { channelRenderer: { channelId: 'UCone', subscriberCountText: { simpleText: '구독자 1.2만명' } } }
+    ];
+    const [item] = parseYoutubeSearch(`<script>var ytInitialData = ${JSON.stringify({ contents })};</script>`);
+    assert.equal(item.subscriberCount, 12000);
+    assert.equal(item.channelId, 'UCone');
 });
 
 test('literal article HTML doctype inside CDATA is safe while XML DTD stays blocked', () => {

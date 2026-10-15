@@ -141,7 +141,7 @@ async function loadTrends() {
     trendController?.abort();
     trendController = new AbortController();
     try {
-        const country = $('filterCountry').value;
+        const country = { ko: 'KR', en: 'US', ja: 'JP', zh: 'CN' }[$('filterLanguage').value];
         const field = $('filterField').value;
         const response = await fetch(`/api/trends?country=${encodeURIComponent(country)}&field=${encodeURIComponent(field)}`, { signal: trendController.signal });
         const data = await response.json();
@@ -187,7 +187,7 @@ async function handleSearch(record = false) {
     $('feedList').setAttribute('aria-busy', 'true');
     $('resultsCount').textContent = '수집 중';
     if (currentItems.length) $('searchStatus').textContent += ' 이전 결과를 표시 중입니다.';
-    const params = new URLSearchParams({ q: $('searchInput').value.trim(), category, country: $('filterCountry').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value });
+    const params = new URLSearchParams({ q: $('searchInput').value.trim(), category, language: $('filterLanguage').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value });
     persistState(params);
     if (record === true) params.set('record', '1');
     const timeout = setTimeout(() => requestController.abort(), 20000);
@@ -205,7 +205,7 @@ async function handleSearch(record = false) {
         updateGroupTabs(allItems);
         updateResultSummary(allItems, data.statuses);
         render(allItems);
-        $('rankingNote').textContent = data.rankingNote || '관련도 높은 순은 검색어 관련성과 선택한 국가의 언어를 고려합니다. 최신정보 순은 게시 시각을 우선합니다.';
+        $('rankingNote').textContent = data.rankingNote || '관련도순은 검색어와 선택 언어를, 최신순은 게시 시각을 우선합니다.';
         lastCollectedAt = data.collectedAt;
         lastParams = new URLSearchParams(params).toString().replace(/&?record=1/, '');
         $('feedList').classList.toggle('is-stale', Boolean(data.stale));
@@ -259,7 +259,8 @@ function restoreState() {
     const state = params.size ? Object.fromEntries(params) : saved;
     category = ['all', ...Object.keys(labels)].includes(state.category) ? state.category : 'all';
     $('searchInput').value = String(state.q || '').slice(0, 180);
-    for (const [key, id] of [['country', 'filterCountry'], ['field', 'filterField'], ['period', 'filterPeriod'], ['sort', 'filterSort']]) {
+    state.language ||= { KR: 'ko', US: 'en', GB: 'en', JP: 'ja', CN: 'zh' }[state.country];
+    for (const [key, id] of [['language', 'filterLanguage'], ['field', 'filterField'], ['period', 'filterPeriod'], ['sort', 'filterSort']]) {
         if ([...$(id).options].some(option => option.value === state[key])) $(id).value = state[key];
     }
 }
@@ -288,7 +289,7 @@ function select(id, entries, value) {
     $(id).addEventListener('change', handleSearch);
 }
 select('filterField', ['', '경제', '정치', '금융', '투자', '주식', '부동산', 'IT', 'AI', '스포츠', '여행', '게임', '자동차', '건강', '교육', '연예', '음식', '패션', '과학'].map(f => [f, f || '전체']), '');
-select('filterCountry', [['KR', '대한민국'], ['US', '미국'], ['JP', '일본'], ['CN', '중국'], ['GB', '영국']], 'KR');
+select('filterLanguage', [['ko', '한국어'], ['en', '영어'], ['ja', '일본어'], ['zh', '중국어']], 'ko');
 select('filterPeriod', [['1d', '최근 24시간'], ['3d', '최근 3일'], ['7d', '최근 1주'], ['14d', '최근 2주'], ['30d', '최근 1개월'], ['90d', '최근 3개월'], ['180d', '최근 6개월'], ['365d', '최근 1년'], ['all', '전체']], 'all');
 select('filterSort', [['popular', '인기순 (조회·반응 우선)'], ['relevance', '관련도 높은 순'], ['latest', '최신정보 순']], 'latest');
 restoreState();
@@ -319,6 +320,7 @@ document.querySelector('.bottom-nav a[href="#categoryContainer"]').addEventListe
 });
 document.querySelector('.bottom-nav a[href="#trendHomeTitle"]').addEventListener('click', () => switchView('information'));
 $('exportBtn').addEventListener('click', exportCsv);
+$('openSearchHelp').addEventListener('click', () => $('searchHelpDialog').showModal());
 $('sourceGroupTabs').addEventListener('click', event => {
     const tab = event.target.closest('.source-group-tab');
     if (!tab) return;
@@ -334,7 +336,7 @@ $('searchBtn').addEventListener('click', () => handleSearch(true));
 $('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) handleSearch(true); });
 $('closeSplitBtn').addEventListener('click', () => $('splitView').classList.remove('is-open'));
 $('autoRefresh').addEventListener('change', () => { clearTimeout(timer); if ($('autoRefresh').checked) handleSearch(); });
-document.querySelector('#filterCountry').addEventListener('change', loadTrends);
+document.querySelector('#filterLanguage').addEventListener('change', loadTrends);
 document.querySelector('#filterField').addEventListener('change', loadTrends);
 document.querySelector('#filterField').addEventListener('change', syncSearchField);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && $('autoRefresh').checked) handleSearch(); });
@@ -350,7 +352,8 @@ const searchControls = {
 };
 const videoFilterDefinitions = [
     ['apiPlatform', '플랫폼', [['all', '전체 플랫폼'], ['youtube', 'YouTube'], ['other', 'Dailymotion · PeerTube']], 'all'],
-    ['apiFormat', '영상 형식', [['all', '전체'], ['short', '숏폼 (3분 이하)'], ['long', '롱폼 (3분 초과)']], 'all'],
+    ['apiLanguage', '검색 언어', [['ko', '한국어'], ['en', '영어'], ['ja', '일본어'], ['zh', '중국어']], 'ko'],
+    ['apiFormat', '영상 형식', [['all', '전체'], ['short', '숏폼 (YouTube 세로 쇼츠)'], ['long', '롱폼 (3분 초과)']], 'all'],
     ['apiDate', '업로드 기간', [['all', '전체'], ['24h', '최근 24시간'], ['7d', '최근 1주'], ['30d', '최근 1개월'], ['1y', '최근 1년']], 'all'],
     ['apiDuration', '영상 길이', [['any', '전체'], ['short', '4분 미만'], ['medium', '4~20분'], ['long', '20분 초과']], 'any'],
     ['apiOrder', '정렬 기준', [['relevance', '관련도순'], ['viewCount', '조회수순'], ['date', '최신순']], 'date'],
@@ -578,7 +581,7 @@ for (const id of communityFilterIds) {
 }
 $('communityCountry').addEventListener('change', () => $('communityForm').requestSubmit());
 function saveInformationFilters() {
-    const state = { q: $('searchInput').value, category, country: $('filterCountry').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value, rankingVersion: 2 };
+    const state = { q: $('searchInput').value, category, language: $('filterLanguage').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value, rankingVersion: 2 };
     try { localStorage.setItem(stateKey, JSON.stringify(state)); } catch { /* Storage is optional. */ }
 }
 $('communityForm').addEventListener('submit', async event => {

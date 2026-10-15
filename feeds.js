@@ -82,30 +82,57 @@ function relativeIso(value, now = Date.now()) {
     return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
+const youtubeText = value => typeof value === 'string' ? value : value?.simpleText || value?.content || value?.runs?.map(run => run.text).join('') || '';
+export function parseYoutubeCount(value) {
+    const text = youtubeText(value).replace(/[\u00a0\u202f]/g, ' ').trim();
+    // Missing/hidden metrics stay unknown; localized compact counts are estimates.
+    const match = text.match(/(\d[\d,]*(?:\.\d+)?)\s*(천|만|억|萬|万|億|亿|[KMB])?/i);
+    if (!match) return null;
+    const scale = { k: 1e3, m: 1e6, b: 1e9, 천: 1e3, 만: 1e4, 万: 1e4, 萬: 1e4, 억: 1e8, 億: 1e8, 亿: 1e8 };
+    const count = Number(match[1].replace(/,/g, '')) * (scale[match[2]?.toLowerCase()] || 1);
+    return Number.isFinite(count) ? Math.round(count) : null;
+}
+
 export function parseYoutubeSearch(html) {
     const match = String(html).match(/(?:var\s+ytInitialData|window\["ytInitialData"\]|ytInitialData)\s*=\s*(\{.*?\});\s*<\/script>/s);
     if (!match) throw new Error('YouTube 검색 결과를 읽을 수 없습니다.');
     let data;
     try { data = JSON.parse(match[1]); } catch { throw new Error('YouTube 검색 결과 형식 오류'); }
     const results = [];
+    const channels = new Map();
+    const collectChannels = (value, depth = 0) => {
+        if (!value || typeof value !== 'object' || depth > 60) return;
+        const channel = value.channelRenderer;
+        if (channel?.channelId) channels.set(channel.channelId, parseYoutubeCount(channel.subscriberCountText));
+        Object.values(value).forEach(child => collectChannels(child, depth + 1));
+    };
+    collectChannels(data);
     const visit = (value, depth = 0) => {
         if (!value || typeof value !== 'object' || depth > 60 || results.length >= 200) return;
-        if (value.videoRenderer?.videoId) {
-            const item = value.videoRenderer;
-            const text = value => value?.simpleText || value?.runs?.map(run => run.text).join('') || '';
+        const short = value.reelItemRenderer || value.shortsLockupViewModel;
+        const item = value.videoRenderer || short;
+        const endpoint = item?.navigationEndpoint || item?.onTap?.innertubeCommand || {};
+        const shortUrl = endpoint.commandMetadata?.webCommandMetadata?.url || '';
+        const videoId = item?.videoId || endpoint.reelWatchEndpoint?.videoId || /^\/shorts\/([^/?]+)/.exec(shortUrl)?.[1];
+        if (videoId) {
+            const text = youtubeText;
             const duration = text(item.lengthText).split(':').map(Number);
             const durationSeconds = duration.length > 1 && duration.every(Number.isFinite) ? duration.reduce((seconds, part) => seconds * 60 + part, 0) : null;
-            const views = text(item.viewCountText || item.shortViewCountText).replace(/,/g, '');
-            const exactViews = /^(?:조회수\s*)?(\d+)\s*(?:회|views?)?$/i.exec(views.trim());
+            const viewText = text(item.viewCountText || item.shortViewCountText || item.overlayMetadata?.secondaryText);
+            const isShort = Boolean(short || endpoint.reelWatchEndpoint || /^\/shorts\//.test(shortUrl));
+            const owner = item.ownerText || item.shortBylineText || item.longBylineText;
+            const channelId = owner?.runs?.find(run => run.navigationEndpoint?.browseEndpoint?.browseId)?.navigationEndpoint.browseEndpoint.browseId || '';
+            const thumbnail = item.thumbnail?.thumbnails?.at(-1) || item.thumbnail?.sources?.at(-1);
             results.push({
-                title: plain(text(item.title)).slice(0, 500), url: safeUrl(`https://www.youtube.com/watch?v=${encodeURIComponent(item.videoId)}`),
-                source: 'YouTube', publisher: plain(text(item.ownerText)) || 'YouTube',
-                durationSeconds, viewCount: exactViews ? Number(exactViews[1]) : null,
-                channelId: item.ownerText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId || '',
+                title: plain(text(item.title || item.headline || item.overlayMetadata?.primaryText)).slice(0, 500), url: safeUrl(isShort ? `https://www.youtube.com/shorts/${encodeURIComponent(videoId)}` : `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`),
+                source: 'YouTube', publisher: plain(text(owner)) || 'YouTube',
+                durationSeconds, isShort, isVertical: thumbnail?.width > 0 && thumbnail?.height > thumbnail.width, viewCount: parseYoutubeCount(viewText),
+                subscriberCount: parseYoutubeCount(item.subscriberCountText || item.ownerSubscriberCountText) ?? channels.get(channelId) ?? null,
+                channelId,
                 date: relativeIso(text(item.publishedTimeText)), dateLabel: '게시 (추정)', dateApproximate: true,
                 dateText: plain(text(item.publishedTimeText)).slice(0, 100), description: plain(text(item.descriptionSnippet)).slice(0, 1500),
-                metrics: [plain(text(item.viewCountText || item.shortViewCountText)).slice(0, 100)].filter(Boolean),
-                metricsSource: 'YouTube 공개 검색 화면', thumbnail: safeUrl(item.thumbnail?.thumbnails?.at(-1)?.url || '')
+                metrics: [plain(viewText).slice(0, 100)].filter(Boolean),
+                metricsSource: 'YouTube 공개 검색 화면', thumbnail: safeUrl(thumbnail?.url || '')
             });
         }
         Object.values(value).forEach(child => visit(child, depth + 1));
