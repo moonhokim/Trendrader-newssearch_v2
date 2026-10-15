@@ -359,9 +359,7 @@ function levelOf(s){
 }
 
 function buildPrompt(i){
-    var v=viralOf(i);
-    var perf=v===null?'(구독자 수 미확인)':'구독자 대비 '+(v/100).toFixed(1)+'배 조회수';
-    return '나는 유튜브 크리에이터야. 아래 영상을 벤치마킹해서 기획안을 써줘.\n\n[대상]\n제목: '+i.title+'\n플랫폼: '+PLAT[i.platform||'youtube'].name+' ('+(i.isShort?'쇼츠':i.sec>SHORT_MAX?'롱폼':'일반 영상')+')\n채널: '+i.channelTitle+'\n길이: '+fmtDur(i.sec)+'\n조회수: '+(i.viewCount===null?'미제공':i.viewCount.toLocaleString())+'\n성과: '+perf+'\n\n[요청]\n1. 클릭을 부른 심리적 트리거 분석\n2. 내 주제에 맞춘 썸네일/제목 5개 추천\n3. 시청 지속 시간을 위한 대본 구조 설계';
+    return '나는 유튜브 영상 기획자야. 아래 영상을 벤치마킹해서 기획안을 작성해줘.\n\n[대상]\n제목: '+i.title+'\n플랫폼: '+PLAT[i.platform||'youtube'].name+'\n채널: '+i.channelTitle+'\n길이: '+(i.sec>0?fmtDur(i.sec):'미제공')+'\n조회수: '+(i.viewCount==null?'미제공':i.viewCount.toLocaleString())+'\nURL: '+safeMediaUrl(i.url||('https://www.youtube.com/watch?v='+encodeURIComponent(i.id)))+'\n\n[요청]\n1. 클릭을 부르는 심리적 트리거 분석\n2. 최근 트랜드를 반영해서 유사한 주제로 제목과 썸네일 5개 추천\n3. 시청 지속 시간을 위한 대본 구조 설계';
 }
 
 function makeCard(i){
