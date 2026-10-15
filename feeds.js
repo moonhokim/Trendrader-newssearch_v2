@@ -122,7 +122,12 @@ export function parseYoutubeSearch(html) {
             const isShort = Boolean(short || endpoint.reelWatchEndpoint || /^\/shorts\//.test(shortUrl));
             const owner = item.ownerText || item.shortBylineText || item.longBylineText;
             const channelId = owner?.runs?.find(run => run.navigationEndpoint?.browseEndpoint?.browseId)?.navigationEndpoint.browseEndpoint.browseId || '';
-            const thumbnail = item.thumbnail?.thumbnails?.at(-1) || item.thumbnail?.sources?.at(-1);
+            // Search cards may crop a vertical Short to a landscape preview.
+            // The playback endpoint retains the original video's aspect ratio.
+            const originalThumbnail = endpoint.reelWatchEndpoint?.thumbnail;
+            const thumbnail = originalThumbnail?.thumbnails?.at(-1) || originalThumbnail?.sources?.at(-1)
+                || item.thumbnailViewModel?.image?.sources?.at(-1)
+                || item.thumbnail?.thumbnails?.at(-1) || item.thumbnail?.sources?.at(-1);
             results.push({
                 title: plain(text(item.title || item.headline || item.overlayMetadata?.primaryText)).slice(0, 500), url: safeUrl(isShort ? `https://www.youtube.com/shorts/${encodeURIComponent(videoId)}` : `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`),
                 source: 'YouTube', publisher: plain(text(owner)) || 'YouTube',

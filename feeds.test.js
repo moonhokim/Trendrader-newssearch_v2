@@ -95,6 +95,34 @@ test('YouTube joins visible channel subscriber counts by channel ID', () => {
     assert.equal(item.channelId, 'UCone');
 });
 
+test('YouTube uses Shorts original aspect ratio instead of cropped search previews', () => {
+    // Minimal public search shape: type=Shorts can still return videoRenderer.
+    const contents = [
+        { videoRenderer: {
+            videoId: 'portrait', title: { runs: [{ text: 'AI short' }] },
+            thumbnail: { thumbnails: [{ url: 'https://example.com/cropped.jpg', width: 720, height: 404 }] },
+            navigationEndpoint: {
+                commandMetadata: { webCommandMetadata: { url: '/shorts/portrait' } },
+                reelWatchEndpoint: { videoId: 'portrait', thumbnail: {
+                    thumbnails: [{ url: 'https://example.com/original.jpg', width: 1080, height: 1920 }],
+                    isOriginalAspectRatio: true
+                } }
+            }
+        } },
+        { shortsLockupViewModel: {
+            onTap: { innertubeCommand: { reelWatchEndpoint: { videoId: 'modern' } } },
+            overlayMetadata: { primaryText: { content: 'Modern short' } },
+            thumbnailViewModel: { image: { sources: [{ url: 'https://example.com/modern.jpg', width: 405, height: 720 }] } }
+        } }
+    ];
+    const items = parseYoutubeSearch(`<script>var ytInitialData = ${JSON.stringify({ contents })};</script>`);
+    assert.equal(items.length, 2);
+    assert.ok(items.every(item => item.isShort && item.isVertical));
+    assert.equal(items[0].thumbnail, 'https://example.com/original.jpg');
+    assert.equal(items[0].url, 'https://www.youtube.com/shorts/portrait');
+    assert.equal(items[1].thumbnail, 'https://example.com/modern.jpg');
+});
+
 test('literal article HTML doctype inside CDATA is safe while XML DTD stays blocked', () => {
     const xml = '<rss><channel><item><title>Article</title><link>https://example.com/post</link><content:encoded><![CDATA[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"><html><body><p>Readable article</p></body></html>]]></content:encoded></item></channel></rss>';
     assert.equal(parseFeed(xml, 'GitHub Blog')[0].description, 'Readable article');

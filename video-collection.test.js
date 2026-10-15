@@ -40,9 +40,30 @@ test('public Shorts fetch metadata for date filtering and public channel subscri
  const channelId='UC'+'x'.repeat(22);
  const data=await search(options(new URLSearchParams({q:'AI',category:'youtube',period:'7d',videoFormat:'short',includeSubscribers:'1'})),async url=>{
   if(url.pathname==='/results')return new Response('<script>var ytInitialData = '+JSON.stringify({reelItemRenderer:{videoId:'clip',headline:{simpleText:'AI'},thumbnail:{thumbnails:[{url:'https://i.ytimg.com/clip',width:405,height:720}]}}})+';</script>');
-  if(url.pathname==='/watch')return new Response('<script>var ytInitialPlayerResponse = '+JSON.stringify({videoDetails:{channelId,viewCount:'12345',lengthSeconds:'45',author:'Channel'},microformat:{playerMicroformatRenderer:{publishDate:new Date().toISOString()}}})+';</script>');
+  if(url.pathname==='/watch')return new Response('<script>var ytInitialPlayerResponse = '+JSON.stringify({videoDetails:{channelId,viewCount:'12345',lengthSeconds:'45',author:'Channel',title:'AI { \"quoted\" }'},microformat:{playerMicroformatRenderer:{publishDate:new Date().toISOString()}}})+';window.playerReady=true;</script>');
   assert.equal(url.pathname,'/channel/'+channelId);
   return new Response(JSON.stringify({subscriberCountText:{simpleText:'구독자 1.2만명'}}));
  });
  assert.equal(data.items.length,1);assert.equal(data.items[0].subscriberCount,12000);assert.equal(data.items[0].viewCount,12345);assert.equal(data.items[0].durationSeconds,45);
+});
+
+test('empty Shorts filter page retries discovery but still excludes horizontal videos',async()=>{
+ let calls=0;
+ const data=await search(options(new URLSearchParams({q:'AI',category:'youtube',period:'all',videoFormat:'short'})),async url=>{
+  calls++;
+  if(calls===1)return new Response('<script>var ytInitialData = {};</script>');
+  assert.equal(url.searchParams.has('sp'),false);assert.equal(url.searchParams.get('search_query'),'AI #shorts');
+  const video=(id,short,width,height)=>({videoRenderer:{videoId:id,title:{simpleText:'AI '+id},thumbnail:{thumbnails:[{url:'https://i.ytimg.com/'+id,width:720,height:404}]},navigationEndpoint:short?{reelWatchEndpoint:{videoId:id,thumbnail:{thumbnails:[{url:'https://i.ytimg.com/'+id+'/frame0.jpg',width,height}]}}}:{watchEndpoint:{videoId:id}}}});
+  return new Response('<script>var ytInitialData = '+JSON.stringify({contents:[video('vertical',true,1080,1920),video('horizontal',true,1920,1080),video('ordinary',false,1080,1920)]})+';</script>');
+ });
+ assert.equal(calls,2);assert.equal(data.items.length,1);assert.ok(data.items[0].url.endsWith('/vertical'));
+});
+
+test('undated Shorts retain upstream seven-day filter without inventing a date',async()=>{
+ const renderer={reelItemRenderer:{videoId:'clip',headline:{simpleText:'AI'},thumbnail:{thumbnails:[{url:'https://i.ytimg.com/clip',width:405,height:720}]}}};
+ for(const period of ['7d','3d']){
+ const data=await search(options(new URLSearchParams({q:'AI',category:'youtube',period,sort:'relevance',videoFormat:'short'})),async url=>new Response('<script>var ytInitialData = '+JSON.stringify(renderer)+';</script>'));
+ assert.equal(data.items.length,period==='7d'?1:0);
+ if(period==='7d'){assert.equal(data.items[0].date,null);assert.equal(data.items[0].upstreamPeriodMatch,true);assert.match(data.statuses[0].note,/YouTube 업로드 기간 필터/);}
+ }
 });

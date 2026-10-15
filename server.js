@@ -90,11 +90,30 @@ async function community(o, fetcher) {
     if (!Array.isArray(data.hits)) throw new Error('커뮤니티 응답 형식 오류');
     return data.hits.map(i => ({ title: plain(i.title), url: safeUrl(i.url) || `https://news.ycombinator.com/item?id=${encodeURIComponent(i.objectID)}`, source: 'Hacker News', publisher: i.author || 'Hacker News', date: iso(i.created_at), dateLabel: '게시', description: plain(i.story_text) || '본문 설명이 제공되지 않습니다. 원문에서 확인하세요.', metrics: [`추천 ${i.points ?? 0}`, `댓글 ${i.num_comments ?? 0}`] }));
 }
+// Player JSON may be followed by other statements in the same script.
+function youtubePlayerData(html) {
+    const assignment = /(?:var\s+ytInitialPlayerResponse|ytInitialPlayerResponse)\s*=\s*\{/.exec(html);
+    if (!assignment) return null;
+    const start = assignment.index + assignment[0].length - 1;
+    let depth = 0, quoted = false, escaped = false;
+    for (let index = start; index < html.length; index++) {
+        const char = html[index];
+        if (quoted) {
+            if (escaped) escaped = false;
+            else if (char === '\\') escaped = true;
+            else if (char === '"') quoted = false;
+        } else if (char === '"') quoted = true;
+        else if (char === '{') depth++;
+        else if (char === '}' && --depth === 0) return JSON.parse(html.slice(start, index + 1));
+    }
+    return null;
+}
 // Fetch public channel statistics once per channel, preserving unavailable values.
 async function enrichYoutubeChannels(items, o, fetcher) {
     if (!items.length) return items;
     if (o.videoFormat === 'short' && !process.env.YOUTUBE_API_KEY && (o.since || o.includeSubscribers)) {
-        for (let start = 0; start < items.length; start += 10) await Promise.all(items.slice(start, start + 10).map(async item => {
+        const missingMetadata = items.filter(item => (o.since && !item.date) || (o.includeSubscribers && !item.channelId));
+        for (let start = 0; start < missingMetadata.length; start += 10) await Promise.all(missingMetadata.slice(start, start + 10).map(async item => {
             try {
                 const id = new URL(item.url).pathname.split('/').pop();
                 const url = new URL('https://www.youtube.com/watch');
@@ -102,15 +121,14 @@ async function enrichYoutubeChannels(items, o, fetcher) {
                 const response = await fetcher(url, {headers:{'User-Agent':'Mozilla/5.0'},signal:AbortSignal.timeout(3000)});
                 if (!response.ok) return;
                 const html = await readUpstream(response, 8 * 1024 * 1024);
-                const match = html.match(/(?:var\s+ytInitialPlayerResponse|ytInitialPlayerResponse)\s*=\s*(\{.*?\});\s*<\/script>/s);
-                if (!match) return;
-                const player = JSON.parse(match[1]);
+                const player = youtubePlayerData(html);
+                if (!player) return;
                 const details = player.videoDetails || {};
                 const metadata = player.microformat?.playerMicroformatRenderer || {};
                 item.channelId = details.channelId || item.channelId;
                 item.publisher = details.author || item.publisher;
-                item.date = iso(metadata.publishDate || metadata.uploadDate) || item.date;
-                item.dateApproximate = false;
+                const publishedAt = iso(metadata.publishDate || metadata.uploadDate);
+                if (publishedAt) { item.date = publishedAt; item.dateApproximate = false; item.dateLabel = '게시'; }
                 item.durationSeconds = parseYoutubeCount(details.lengthSeconds) ?? item.durationSeconds;
                 item.viewCount = parseYoutubeCount(details.viewCount) ?? item.viewCount;
             } catch { /* Unknown dates stay unknown and cannot pass a date filter. */ }
@@ -198,7 +216,38 @@ async function youtube(o, fetcher) {
     const response = await fetcher(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GlobalTrendSearch/1.0)', Accept: 'text/html', 'Accept-Language': regions[o.country].accept }, signal: AbortSignal.timeout(12000) });
     if (!response.ok) throw new Error(`YouTube 검색 응답 오류 (${response.status})`);
     let items = parseYoutubeSearch(await readUpstream(response, 8 * 1024 * 1024));
-    if (o.videoFormat === 'short') items = items.filter(item => item.isShort === true && item.isVertical === true);
+    if (o.videoFormat === 'short') {
+        items = items.filter(item => item.isShort === true && item.isVertical === true);
+        const uploadWindowDays = { '1d': 1, '3d': 7, '7d': 7, '14d': 30, '30d': 30, '90d': 365, '180d': 365, '365d': 365 }[o.period];
+        const markUploadWindow = values => values.map(item => ({ ...item, upstreamPeriodMatch: Boolean(o.since && uploadWindowDays <= durations[o.period]), ...(!item.date && o.since ? { dateLabel: '게시일 미제공 · YouTube 기간 필터 적용' } : {}) }));
+        items = markUploadWindow(items);
+        if (o.since && !items.some(item => item.date && Date.parse(item.date) >= o.since)) {
+            const datedSearch = new URL(url);
+            const uploaded = o.period === '1d' ? 2 : ['3d', '7d'].includes(o.period) ? 3 : ['14d', '30d'].includes(o.period) ? 4 : 5;
+            datedSearch.searchParams.set('sp', Buffer.from([18, 4, 8, uploaded, 16, 9]).toString('base64'));
+            if (datedSearch.href !== url.href) {
+                const datedResponse = await fetcher(datedSearch, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GlobalTrendSearch/1.0)', Accept: 'text/html', 'Accept-Language': regions[o.country].accept }, signal: AbortSignal.timeout(12000) });
+                if (datedResponse.ok) {
+                    const datedItems = markUploadWindow(parseYoutubeSearch(await readUpstream(datedResponse, 8 * 1024 * 1024)).filter(item => item.isShort && item.isVertical));
+                    const seen = new Set(datedItems.map(item => item.url));
+                    items = [...datedItems, ...items.filter(item => !seen.has(item.url))].slice(0, 30);
+                }
+            }
+        }
+        // Some YouTube search combinations return an empty page with HTTP 200.
+        // Retry discovery without those filters, still requiring Shorts + portrait evidence.
+        if (!items.length) {
+            const fallback = new URL(url);
+            fallback.searchParams.delete('sp');
+            if (o.since) {
+                const uploaded = o.period === '1d' ? 2 : ['3d', '7d'].includes(o.period) ? 3 : ['14d', '30d'].includes(o.period) ? 4 : 5;
+                fallback.searchParams.set('sp', Buffer.from([18, 2, 8, uploaded]).toString('base64'));
+            }
+            fallback.searchParams.set('search_query', `${query || regions[o.country].videoQuery} #shorts`);
+            const fallbackResponse = await fetcher(fallback, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GlobalTrendSearch/1.0)', Accept: 'text/html', 'Accept-Language': regions[o.country].accept }, signal: AbortSignal.timeout(12000) });
+            if (fallbackResponse.ok) items = markUploadWindow(parseYoutubeSearch(await readUpstream(fallbackResponse, 8 * 1024 * 1024)).filter(item => item.isShort === true && item.isVertical === true));
+        }
+    }
     return enrichYoutubeChannels(items, o, fetcher);
 }
 const trendFieldTerms = {
@@ -276,7 +325,9 @@ export async function search(o, fetcher = fetch) {
     const seen = new Set();
     let items = results.flatMap((r, index) => r.status === 'fulfilled' ? r.value.map((item, rank) => ({ ...item, provider: selected[index], sourceRank: rank + 1, ...(r.value.stale ? { stale: true, collectedAt: r.value.fetchedAt } : {}) })) : []).filter(i => {
         const identity = canonicalUrl(i.url);
-        if (!i.title || !identity || seen.has(identity) || (o.since && (!Number.isFinite(Date.parse(i.date)) || Date.parse(i.date) < o.since))) return false;
+        const published = Date.parse(i.date);
+        const withinPeriod = Number.isFinite(published) ? published >= o.since : i.provider === 'youtube' && i.upstreamPeriodMatch === true;
+        if (!i.title || !identity || seen.has(identity) || (o.since && !withinPeriod)) return false;
         seen.add(identity); return true;
     });
     items = rankItems(items, o);
@@ -286,6 +337,7 @@ export async function search(o, fetcher = fetch) {
         status.durationMs = timing[status.provider];
         status.displayedCount = items.filter(item => item.provider === status.provider).length;
         if (status.provider === 'youtube') status.note = process.env.YOUTUBE_API_KEY ? `공식 YouTube Data API · ${o.koreanBrowse ? '한국어 주제 최신 검색' : '검색어가 없으면 지역 인기 차트'}` : `공개 검색 HTML · ${o.koreanBrowse ? '한국어 주제 최신 검색 · ' : ''}인기 차트가 아니며 게시 시각은 추정치`;
+        if (status.provider === 'youtube' && items.some(item => item.provider === 'youtube' && !item.date && item.upstreamPeriodMatch)) status.note += ' · 게시일 미제공 쇼츠는 YouTube 업로드 기간 필터 기준이며 최신순에서는 날짜 확인 영상 뒤에 표시';
         if (status.provider === 'github') status.note = 'GitHub는 자연어 필터를 지원하지 않아 제목·설명의 언어를 추정해 우선 정렬합니다. 최신순 날짜는 코드 갱신 시각입니다.';
         if (Object.hasOwn(regionalBlogs, status.provider)) status.note = '선택 지역 블로그 · Google 뉴스 사이트 한정 색인 검색 (전체 게시물 수집 아님)';
     }
