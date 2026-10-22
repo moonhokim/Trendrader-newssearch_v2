@@ -576,7 +576,7 @@ test('content URL copying and Grok launch reuse the same project window and reje
     await dom.window.TrendContentActions.summarize('https://www.youtube.com/watch?v=abcdefghijk');
     assert.equal(copied[0],item.url);
     assert.equal(opened.length,1);
-    assert.equal(opened[0].url,'https://grok.com/project/00d49a5c-655b-47d7-b477-9a07ec8e901b?tab=conversations');
+    assert.equal(opened[0].url,'https://grok.com/project/e7217fd4-da58-4dd3-9119-24e9a9c0a156?tab=conversations');
     assert.equal(popup.opener,null);
     assert.equal(focused,2);
     await assert.rejects(dom.window.TrendContentActions.summarize('javascript:alert(1)'));
@@ -716,6 +716,6 @@ test('mobile trend runs directly, edited query survives restart and Grok opens s
     let opened;
     dom.window.open = (...args) => { opened = args; };
     doc.getElementById('shareBtn').click();
-    assert.deepEqual(opened, ['https://grok.com/project/00d49a5c-655b-47d7-b477-9a07ec8e901b?tab=conversations', '_blank', 'noopener,noreferrer']);
+    assert.deepEqual(opened, ['https://grok.com/project/e7217fd4-da58-4dd3-9119-24e9a9c0a156?tab=conversations', '_blank', 'noopener,noreferrer']);
     assert.match(doc.getElementById('analysisHelp').textContent, /CSV.*로그인.*업로드/);
 });

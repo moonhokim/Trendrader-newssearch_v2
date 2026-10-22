@@ -1,5 +1,5 @@
 (() => {
-    const project = 'https://grok.com/project/00d49a5c-655b-47d7-b477-9a07ec8e901b?tab=conversations';
+    const project = 'https://grok.com/project/e7217fd4-da58-4dd3-9119-24e9a9c0a156?tab=conversations';
     let projectWindow;
     function validUrl(value) {
         try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''; } catch { return ''; }

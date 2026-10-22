@@ -330,7 +330,7 @@ $('sourceGroupTabs').addEventListener('click', event => {
     render(selectedGroup === 'all' ? allItems : allItems.filter(item => sourceGroup(item) === selectedGroup));
 });
 $('shareBtn').addEventListener('click', () => {
-    window.open('https://grok.com/project/00d49a5c-655b-47d7-b477-9a07ec8e901b?tab=conversations', '_blank', 'noopener,noreferrer');
+    window.open('https://grok.com/project/e7217fd4-da58-4dd3-9119-24e9a9c0a156?tab=conversations', '_blank', 'noopener,noreferrer');
     $('actionStatus').textContent = 'Grok에서 본인 계정으로 로그인한 뒤 저장한 CSV 파일을 업로드하여 분석하세요.';
 });
 $('searchBtn').addEventListener('click', () => handleSearch(true));
