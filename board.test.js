@@ -63,7 +63,7 @@ test('board enforces pagination, origin, input limits and retries concurrent wri
     process.env.BOARD_GITHUB_TOKEN = 'test'; process.env.BOARD_PASSWORD_PEPPER = 'test-only-pepper-with-at-least-32-characters'; const f = fixture();
     f.seed(Array.from({ length: 51 }, (_, i) => ({ id: String(i), title: 'Title', body: 'Body', nickname: 'Writer', createdAt: new Date(i * 1000).toISOString(), pinned: false, comments: [] })));
     assert.equal((await f.call('GET')).body.posts.length, 50); assert.equal((await f.call('GET', '?page=2')).body.posts.length, 1);
-    const input = { title: 'Test', body: 'Body', nickname: 'Writer', password: 'password' };
+    const input = { title: 'Test', body: 'Body', nickname: 'NewWriter', password: 'password' };
     assert.equal((await f.call('POST', '', input, 'https://evil.com')).status, 403);
     assert.equal((await f.call('POST', '', input, null)).status, 403);
     assert.equal((await f.call('POST', '', { ...input, title: 'x'.repeat(151) })).status, 400);
@@ -101,4 +101,23 @@ test('comment edits and deletes require author credentials, protect secrets and 
     assert.equal((await f.call('PATCH',legacy,{body:'Admin changed',nickname:'Admin',password:'5298'})).body.post.comments[0].body,'Admin changed');
     assert.equal((await f.call('DELETE',legacy,{nickname:'Admin',password:'5298'})).body.post.comments.length,0);
     assert.equal((await f.call('DELETE',legacy,{nickname:'Admin',password:'5298'})).status,404);
+});
+
+
+test('nickname ownership spans posts and comments and is rechecked after conflicts', async () => {
+    process.env.BOARD_GITHUB_TOKEN = 'test'; process.env.BOARD_PASSWORD_PEPPER = 'test-only-pepper-with-at-least-32-characters';
+    const f = fixture();
+    const data = { title:'Title', body:'Body', nickname:'Owner', password:'original-password' };
+    const first = await f.call('POST', '', data);
+    const path = '/' + first.body.post.id + '/comments';
+    assert.equal((await f.call('POST', '', {...data, password:'different-password'})).status, 409);
+    const rejected = await f.call('POST', path, {...data, password:'different-password'});
+    assert.equal(rejected.status, 409); assert.match(rejected.body.error, /비밀번호.*다른 닉네임/);
+    assert.equal((await f.call('POST', path, data)).status, 201);
+    assert.equal((await f.call('POST', path, {...data, nickname:'Reader'})).status, 201);
+    assert.equal((await f.call('POST', '', {...data, nickname:'Reader', password:'wrong-password'})).status, 409);
+    f.conflict(); assert.equal((await f.call('POST', '', data)).status, 201);
+    assert.equal(f.stored().posts.length, 2);
+    f.seed([{id:'legacy',nickname:'Legacy',createdAt:'2020',comments:[]}]);
+    assert.equal((await f.call('POST', '', {...data,nickname:'Legacy'})).status,409);
 });

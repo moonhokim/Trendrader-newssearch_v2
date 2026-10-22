@@ -528,7 +528,7 @@ test('blank community searches preserve saved country and immediately search whe
     const request = requests.filter(url => url.pathname === '/api/search').at(-1);
     assert.equal(request.searchParams.get('q'), '');
     assert.equal(request.searchParams.get('country'), 'US');
-    assert.equal(request.searchParams.get('sort'), 'latest');
+    assert.equal(request.searchParams.get('sort'), 'popular');
     const country = dom.window.document.getElementById('communityCountry');
     for (const value of ['JP', 'CN', 'GB', 'KR']) {
         country.value = value;
@@ -693,4 +693,29 @@ test('legacy country preferences migrate to language and search help opens on de
     doc.getElementById('openSearchHelp').click();
     assert.equal(help.open, true);
     assert.ok(help.contains(doc.getElementById('rankingHelp')));
+});
+
+
+test('mobile trend runs directly, edited query survives restart and Grok opens safely', async t => {
+    const requests = [];
+    const media = { matches: true, addEventListener() {} };
+    const dom = setup(async url => { requests.push(new URL(url, 'http://localhost')); return response({ trends: [{query:'인기 주제', count:12}] }); }, 'http://localhost:3000', undefined, media);
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    doc.querySelector('.ticker-item').click();
+    await flush();
+    assert.equal(doc.getElementById('mobileSearchDialog').open, false);
+    assert.equal(requests.filter(url => url.pathname === '/api/search').at(-1).searchParams.get('q'), '인기 주제');
+    const query = doc.getElementById('sharedQuery'); query.value = '다음 주제'; query.dispatchEvent(new dom.window.Event('input'));
+    const saved = JSON.parse(dom.window.localStorage.getItem('trend-search-filters-v1'));
+    const restored = setup(async () => response(), dom.window.location.href, saved);
+    t.after(() => restored.window.close());
+    await flush();
+    assert.equal(restored.window.document.getElementById('searchInput').value, '다음 주제');
+    let opened;
+    dom.window.open = (...args) => { opened = args; };
+    doc.getElementById('shareBtn').click();
+    assert.deepEqual(opened, ['https://grok.com/project/00d49a5c-655b-47d7-b477-9a07ec8e901b?tab=conversations', '_blank', 'noopener,noreferrer']);
+    assert.match(doc.getElementById('analysisHelp').textContent, /CSV.*로그인.*업로드/);
 });

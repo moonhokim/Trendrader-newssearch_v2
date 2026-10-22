@@ -248,7 +248,7 @@ function renderStatuses(statuses) {
     }));
 }
 function persistState(params) {
-    const state = { ...Object.fromEntries(params), rankingVersion: 2 };
+    const state = { ...Object.fromEntries(params), rankingVersion: 2, autoRefresh: $('autoRefresh').checked };
     try { localStorage.setItem(stateKey, JSON.stringify(state)); } catch { /* Storage may be unavailable in private mode. */ }
     try { history.replaceState(null, '', `${location.pathname}?${params}`); } catch { /* file: previews cannot change history. */ }
 }
@@ -256,7 +256,8 @@ function restoreState() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(stateKey)) || {}; } catch { /* Ignore damaged preferences. */ }
     const params = new URLSearchParams(location.search);
-    const state = params.size ? Object.fromEntries(params) : saved;
+    const state = { ...saved, ...Object.fromEntries(params) };
+    $('autoRefresh').checked = state.autoRefresh === true;
     category = ['all', ...Object.keys(labels)].includes(state.category) ? state.category : 'all';
     $('searchInput').value = String(state.q || '').slice(0, 180);
     state.language ||= { KR: 'ko', US: 'en', GB: 'en', JP: 'ja', CN: 'zh' }[state.country];
@@ -328,14 +329,14 @@ $('sourceGroupTabs').addEventListener('click', event => {
     updateGroupTabs(allItems);
     render(selectedGroup === 'all' ? allItems : allItems.filter(item => sourceGroup(item) === selectedGroup));
 });
-$('shareBtn').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(location.href); $('actionStatus').textContent = '검색 주소를 복사했습니다.'; }
-    catch { $('actionStatus').textContent = '브라우저 주소창의 URL을 복사하면 검색 조건을 공유할 수 있습니다.'; }
+$('shareBtn').addEventListener('click', () => {
+    window.open('https://grok.com/project/00d49a5c-655b-47d7-b477-9a07ec8e901b?tab=conversations', '_blank', 'noopener,noreferrer');
+    $('actionStatus').textContent = 'Grok에서 본인 계정으로 로그인한 뒤 저장한 CSV 파일을 업로드하여 분석하세요.';
 });
 $('searchBtn').addEventListener('click', () => handleSearch(true));
 $('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) handleSearch(true); });
 $('closeSplitBtn').addEventListener('click', () => $('splitView').classList.remove('is-open'));
-$('autoRefresh').addEventListener('change', () => { clearTimeout(timer); if ($('autoRefresh').checked) handleSearch(); });
+$('autoRefresh').addEventListener('change', () => { clearTimeout(timer); saveInformationFilters(); if ($('autoRefresh').checked) handleSearch(); });
 document.querySelector('#filterLanguage').addEventListener('change', loadTrends);
 document.querySelector('#filterField').addEventListener('change', loadTrends);
 document.querySelector('#filterField').addEventListener('change', syncSearchField);
@@ -483,8 +484,8 @@ function submitActiveSearch() {
 function selectTrend(query) {
     syncQuery(query);
     submitActiveSearch();
-    if (window.matchMedia?.('(max-width: 768px)').matches) $('mobileSearchDialog').showModal();
-    else $('sharedQuery').focus({ preventScroll: true });
+    if ($('mobileSearchDialog').open) $('mobileSearchDialog').close();
+    if (!window.matchMedia?.('(max-width: 768px)').matches) $('sharedQuery').focus({ preventScroll: true });
 }
 for (const id of ['searchInput', 'communityQuery', 'sharedQuery', 'mobileQuery']) {
     $(id).addEventListener('input', event => {
@@ -581,17 +582,16 @@ for (const id of communityFilterIds) {
 }
 $('communityCountry').addEventListener('change', () => $('communityForm').requestSubmit());
 function saveInformationFilters() {
-    const state = { q: $('searchInput').value, category, language: $('filterLanguage').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value, rankingVersion: 2 };
+    const state = { q: $('searchInput').value, category, language: $('filterLanguage').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value, rankingVersion: 2, autoRefresh: $('autoRefresh').checked };
     try { localStorage.setItem(stateKey, JSON.stringify(state)); } catch { /* Storage is optional. */ }
+    const { rankingVersion, autoRefresh, ...filters } = state;
+    try { history.replaceState(null, '', `${location.pathname}?${new URLSearchParams(filters)}`); } catch { /* Preview history may be unavailable. */ }
 }
 $('communityForm').addEventListener('submit', async event => {
     event.preventDefault();
     setWorkspaceSearchBusy('community', true);
     scrollResultsToTop();
     communityInitialized = true;
-    if (!$('communityQuery').value.trim()) {
-        $('communitySort').value = 'latest';
-    }
     saveCommunityFilters();
     saveInformationFilters();
     communityController?.abort();

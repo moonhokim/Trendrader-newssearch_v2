@@ -74,6 +74,15 @@ export function createBoardHandler(fetcher = fetch) {
             const passwordHash = req.method === 'POST' ? await hash(password, salt) : '';
             for (let attempt = 0; attempt < 4; attempt++) {
                 const { posts, sha } = await read(); let result;
+                if (req.method === 'POST') {
+                    const owners = posts.flatMap(post => [post, ...(post.comments || [])])
+                        .filter(author => author.nickname === nickname)
+                        .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+                    const owner = owners[0];
+                    if (owner && (!owner.passwordHash || !owner.passwordSalt || !same(await hash(password, owner.passwordSalt), owner.passwordHash))) {
+                        throw fail(409, '이미 등록된 닉네임입니다. 기존 비밀번호를 확인하거나 다른 닉네임을 사용하세요.');
+                    }
+                }
                 if (req.method === 'POST' && !id) {
                     if (posts.length >= 10000) throw fail(409, '게시판 저장 용량이 가득 찼습니다. 관리자에게 문의하세요.');
                     result = { id: newId, ...content, nickname, passwordHash, passwordSalt: salt, pinned: admin, createdAt: now, updatedAt: now, comments: [] }; posts.push(result);
