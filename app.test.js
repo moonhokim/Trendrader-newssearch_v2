@@ -239,9 +239,13 @@ test('CSV export uses displayed snapshot and neutralizes spreadsheet formulas', 
     dom.window.Blob = class { constructor(parts) { blobParts = parts; } };
     dom.window.URL.createObjectURL = () => 'blob:test';
     dom.window.URL.revokeObjectURL = () => {};
-    dom.window.HTMLAnchorElement.prototype.click = () => {};
+    let filename;
+    const NativeDate = dom.window.Date;
+    dom.window.Date = class extends NativeDate { constructor(...args) { super(...(args.length ? args : [2026, 9, 23, 0, 5])); } };
+    dom.window.HTMLAnchorElement.prototype.click = function () { filename = this.download; };
     dom.window.document.querySelector('#exportBtn').click();
     const csv = blobParts.join('');
+    assert.equal(filename, '2026-10-23.csv');
     assert.ok(csv.startsWith('\ufeff'));
     assert.ok(csv.includes('"\'=HYPERLINK(""https://bad.test"")"'));
     assert.ok(csv.includes('"\'  +cmd"'));
@@ -576,7 +580,7 @@ test('content URL copying and Grok launch reuse the same project window and reje
     await dom.window.TrendContentActions.summarize('https://www.youtube.com/watch?v=abcdefghijk');
     assert.equal(copied[0],item.url);
     assert.equal(opened.length,1);
-    assert.equal(opened[0].url,'https://grok.com/project/e7217fd4-da58-4dd3-9119-24e9a9c0a156?tab=conversations');
+    assert.equal(opened[0].url,'https://grok.com/project/00d49a5c-655b-47d7-b477-9a07ec8e901b?tab=conversations');
     assert.equal(popup.opener,null);
     assert.equal(focused,2);
     await assert.rejects(dom.window.TrendContentActions.summarize('javascript:alert(1)'));

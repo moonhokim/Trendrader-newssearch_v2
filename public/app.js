@@ -278,7 +278,8 @@ function exportCsv() {
     const url = URL.createObjectURL(blob);
     const download = node('a');
     download.href = url;
-    download.download = `trend-search-${new Date().toISOString().slice(0, 10)}.csv`;
+    const created = new Date();
+    download.download = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}.csv`;
     document.body.append(download); download.click(); download.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     $('actionStatus').textContent = `${currentItems.length}건을 CSV로 저장했습니다.`;
