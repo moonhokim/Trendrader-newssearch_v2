@@ -407,6 +407,7 @@ function render(){
 }
 
 async function fetchData(){
+    saveSearchState();
     var enteredQuery=$('keyword').value.trim();
     var field=$('keyword').dataset.searchField||'';
     var kw=[enteredQuery,field&&field!==enteredQuery?field:''].filter(Boolean).join(' ');
@@ -471,6 +472,24 @@ async function fetchData(){
     }
 }
 
+var SEARCH_STATE_KEY='trend-video-search-state-v1';
+var SEARCH_STATE_FIELDS=['keyword','apiPlatform','apiLanguage','apiFormat','apiDate','apiDuration','apiOrder','apiPages','apiSubs'];
+function saveSearchState(){
+    var state={};
+    SEARCH_STATE_FIELDS.forEach(function(id){state[id]=$(id).value;});
+    LS.set(SEARCH_STATE_KEY,state);
+}
+function restoreSearchState(){
+    var state=LS.get(SEARCH_STATE_KEY,{});
+    SEARCH_STATE_FIELDS.forEach(function(id){
+        var field=$(id), value=state[id];
+        if(typeof value!=='string')return;
+        if(field.tagName==='SELECT'&&!Array.from(field.options).some(function(option){return option.value===value;}))return;
+        field.value=value;
+    });
+}
+restoreSearchState();
+SEARCH_STATE_FIELDS.forEach(function(id){$(id).addEventListener(id==='keyword'?'input':'change',saveSearchState);});
 $('searchBtn').addEventListener('click',fetchData);
 $('keyword').addEventListener('keydown',function(e){if(e.key==='Enter')fetchData();});
 $('orderToggle').addEventListener('click',function(){isDescending=!isDescending;$('orderToggle').textContent=isDescending?'⬇️':'⬆️';render();});

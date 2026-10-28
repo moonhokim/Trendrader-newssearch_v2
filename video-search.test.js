@@ -50,3 +50,19 @@ test('reordering works without a keyword and leaves unavailable metrics last',t=
  assert.equal(w.matchFormat({platform:'dailymotion',isShort:true,isVertical:true,sec:60},'short'),false);
  assert.deepEqual(Array.from(w.document.querySelectorAll('#apiLanguage option'),x=>x.value),['ko','en','ja','zh']);
 });
+
+test('last video search conditions are restored from browser storage', t => {
+ const dom=new JSDOM(html,{url:'https://example.com/video-search.html',runScripts:'outside-only'});t.after(()=>dom.window.close());
+ dom.window.localStorage.setItem('trend-video-search-state-v1',JSON.stringify({keyword:'AI 뉴스',apiPlatform:'youtube',apiLanguage:'en',apiFormat:'long',apiDate:'30d',apiDuration:'medium',apiOrder:'viewCount',apiPages:'3',apiSubs:'0'}));
+ dom.window.eval(script);
+ const doc=dom.window.document;
+ assert.equal(doc.getElementById('keyword').value,'AI 뉴스');
+ assert.equal(doc.getElementById('apiPlatform').value,'youtube');
+ assert.equal(doc.getElementById('apiLanguage').value,'en');
+ assert.equal(doc.getElementById('apiFormat').value,'long');
+ assert.equal(doc.getElementById('apiDate').value,'30d');
+ assert.equal(doc.getElementById('apiDuration').value,'medium');
+ assert.equal(doc.getElementById('apiOrder').value,'viewCount');
+ assert.equal(doc.getElementById('apiPages').value,'3');
+ assert.equal(doc.getElementById('apiSubs').value,'0');
+});

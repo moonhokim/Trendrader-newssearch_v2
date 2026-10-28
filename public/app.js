@@ -573,14 +573,20 @@ let communitySequence = 0;
 let communityInitialized = false;
 const communityFilterIds = ['communityScope', 'communityCountry', 'communitySort'];
 function saveCommunityFilters() {
-    try { localStorage.setItem('trend-community-filters-v1', JSON.stringify(Object.fromEntries(communityFilterIds.map(id => [id, $(id).value])))); } catch { /* Storage is optional. */ }
+    const state = {
+        q: $('communityQuery').value.slice(0, 180),
+        ...Object.fromEntries(communityFilterIds.map(id => [id, $(id).value]))
+    };
+    try { localStorage.setItem('trend-community-filters-v1', JSON.stringify(state)); } catch { /* Storage is optional. */ }
 }
 let savedCommunityFilters = {};
 try { savedCommunityFilters = JSON.parse(localStorage.getItem('trend-community-filters-v1')) || {}; } catch { /* Storage is optional. */ }
+if (typeof savedCommunityFilters.q === 'string') $('communityQuery').value = savedCommunityFilters.q.slice(0, 180);
 for (const id of communityFilterIds) {
     if ([...$(id).options].some(option => option.value === savedCommunityFilters[id])) $(id).value = savedCommunityFilters[id];
     $(id).addEventListener('change', saveCommunityFilters);
 }
+$('communityQuery').addEventListener('input', saveCommunityFilters);
 $('communityCountry').addEventListener('change', () => $('communityForm').requestSubmit());
 function saveInformationFilters() {
     const state = { q: $('searchInput').value, category, language: $('filterLanguage').value, field: $('filterField').value, period: $('filterPeriod').value, sort: $('filterSort').value, rankingVersion: 2, autoRefresh: $('autoRefresh').checked };

@@ -68,6 +68,21 @@ test('service navigation isolates video state and community searches use their o
     await flush();
 });
 
+test('community search conditions, including its query, are restored after reopening the browser', async t => {
+    const savedCommunity = { q: '반도체', communityScope: 'global', communityCountry: 'US', communitySort: 'popular' };
+    const dom = setup(async () => response(), 'http://localhost:3000', undefined, undefined, { 'trend-community-filters-v1': savedCommunity });
+    t.after(() => dom.window.close());
+    await flush();
+    const doc = dom.window.document;
+    assert.equal(doc.querySelector('#communityQuery').value, '반도체');
+    assert.equal(doc.querySelector('#communityScope').value, 'global');
+    assert.equal(doc.querySelector('#communityCountry').value, 'US');
+    assert.equal(doc.querySelector('#communitySort').value, 'popular');
+    doc.querySelector('#communityQuery').value = 'AI 반도체';
+    doc.querySelector('#communityQuery').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert.equal(JSON.parse(dom.window.localStorage.getItem('trend-community-filters-v1')).q, 'AI 반도체');
+});
+
 test('imported video search preserves filters, subscriber enrichment, sorting and copy actions', async t => {
     const videoHtml = await readFile(new URL('./public/video-search.html', import.meta.url), 'utf8');
     const videoScript = await readFile(new URL('./public/video-search.js', import.meta.url), 'utf8');
