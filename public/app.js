@@ -594,6 +594,13 @@ function saveInformationFilters() {
     const { rankingVersion, autoRefresh, ...filters } = state;
     try { history.replaceState(null, '', `${location.pathname}?${new URLSearchParams(filters)}`); } catch { /* Preview history may be unavailable. */ }
 }
+// Persist selector changes immediately; a search request may be cancelled if the tab closes right away.
+for (const id of ['filterField', 'filterLanguage', 'filterPeriod', 'filterSort']) $(id).addEventListener('change', saveInformationFilters);
+window.addEventListener('pagehide', () => {
+    saveInformationFilters();
+    saveCommunityFilters();
+    saveVideoFilters();
+});
 $('communityForm').addEventListener('submit', async event => {
     event.preventDefault();
     setWorkspaceSearchBusy('community', true);

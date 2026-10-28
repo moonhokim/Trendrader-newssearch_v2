@@ -246,6 +246,19 @@ test('saved and explicit relevance choices remain available', async t => {
     }
 });
 
+test('changing the information search period persists immediately, before a request completes', async t => {
+    const pending = [];
+    const dom = setup(url => new URL(url, 'http://localhost').pathname === '/api/trends' ? response() : new Promise(resolve => pending.push(resolve)));
+    t.after(() => dom.window.close());
+    const doc = dom.window.document;
+    const period = doc.querySelector('#filterPeriod');
+    period.value = '30d';
+    period.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.equal(JSON.parse(dom.window.localStorage.getItem('trend-search-filters-v1')).period, '30d');
+    pending.forEach(resolve => resolve(response()));
+    await flush();
+});
+
 test('CSV export uses displayed snapshot and neutralizes spreadsheet formulas', async t => {
     const dom = setup(async () => response({ items: [{ ...item, title: '=HYPERLINK("https://bad.test")', publisher: '  +cmd' }] }));
     t.after(() => dom.window.close());

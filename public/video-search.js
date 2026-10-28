@@ -490,6 +490,7 @@ function restoreSearchState(){
 }
 restoreSearchState();
 SEARCH_STATE_FIELDS.forEach(function(id){$(id).addEventListener(id==='keyword'?'input':'change',saveSearchState);});
+window.addEventListener('pagehide',saveSearchState);
 $('searchBtn').addEventListener('click',fetchData);
 $('keyword').addEventListener('keydown',function(e){if(e.key==='Enter')fetchData();});
 $('orderToggle').addEventListener('click',function(){isDescending=!isDescending;$('orderToggle').textContent=isDescending?'⬇️':'⬆️';render();});
