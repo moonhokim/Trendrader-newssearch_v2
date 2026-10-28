@@ -259,6 +259,16 @@ test('changing the information search period persists immediately, before a requ
     await flush();
 });
 
+test('browser session form restoration cannot overwrite the saved search period', async t => {
+    const dom = setup(async () => response(), 'http://localhost:3000', { q: 'AI', period: '90d', language: 'ko', sort: 'latest' });
+    t.after(() => dom.window.close());
+    await flush();
+    const period = dom.window.document.querySelector('#filterPeriod');
+    period.value = 'all';
+    dom.window.dispatchEvent(new dom.window.PageTransitionEvent('pageshow'));
+    assert.equal(period.value, '90d');
+});
+
 test('CSV export uses displayed snapshot and neutralizes spreadsheet formulas', async t => {
     const dom = setup(async () => response({ items: [{ ...item, title: '=HYPERLINK("https://bad.test")', publisher: '  +cmd' }] }));
     t.after(() => dom.window.close());

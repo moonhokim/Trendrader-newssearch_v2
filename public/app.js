@@ -601,6 +601,17 @@ window.addEventListener('pagehide', () => {
     saveCommunityFilters();
     saveVideoFilters();
 });
+window.addEventListener('pageshow', () => {
+    // Some browsers restore form controls after deferred scripts run. Re-apply the
+    // durable state so their session restoration cannot replace the last filters.
+    restoreState();
+    syncQuery($('searchInput').value);
+    document.querySelectorAll('.category-chip').forEach(chip => {
+        const active = chip.dataset.category === category;
+        chip.classList.toggle('active', active);
+        chip.setAttribute('aria-pressed', String(active));
+    });
+});
 $('communityForm').addEventListener('submit', async event => {
     event.preventDefault();
     setWorkspaceSearchBusy('community', true);
